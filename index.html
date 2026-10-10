@@ -560,12 +560,15 @@ function fillSource(s){
   if(!v)v=[...devs.vids].filter(d=>!used.has(d.deviceId)).sort((a,b)=>score(b.label)-score(a.label))[0]||devs.vids[0];
   if(v)vs.value=v.deviceId;
   let a=null;
-  if(prevA==="-")a="-";
-  else if(devs.auds.find(d=>d.deviceId===prevA))a=prevA;
-  else if(v){
-    const mate=devs.auds.find(d=>d.groupId&&d.groupId===v.groupId)||devs.auds.find(d=>/usb|hdmi|capture|digital audio/i.test(d.label)&&!/array|built-?in/i.test(d.label));
-    a=mate?mate.deviceId:"-";
-  }
+  const good=/digital audio|usb3|usb audio|hdmi|capture|line|elgato|magewell|cam ?link|grabber/i,bad=/array|built-?in|realtek|microphone|\bmic\b|virtual|obs|vb-|cable|stereo mix|webcam|camera/i;
+  const pick=()=>{
+    const mate=devs.auds.find(d=>d.groupId&&v&&d.groupId===v.groupId&&!bad.test(d.label));
+    if(mate)return mate.deviceId;
+    const best=[...devs.auds].filter(d=>d.deviceId!=="default"&&d.deviceId!=="communications").sort((x,y)=>((good.test(y.label)?2:0)-(bad.test(y.label)?3:0))-((good.test(x.label)?2:0)-(bad.test(x.label)?3:0)))[0];
+    return best&&good.test(best.label)&&!bad.test(best.label)?best.deviceId:null;
+  };
+  if(devs.auds.find(d=>d.deviceId===prevA))a=prevA;
+  else a=pick();
   as.value=a||"-";s.ready=true;
 }
 function onDeviceChange(){
@@ -617,7 +620,13 @@ async function openStream(q,vid,aid){
   if(audio)tries.push({video:{deviceId:{exact:vid}},audio:false,note:" Sound couldn't open, so this screen is video only."});
   let last;
   for(const t of tries){
-    try{return {stream:await gUM({video:t.video,audio:t.audio}),note:t.note}}
+    try{
+      const stream=await gUM({video:t.video,audio:t.audio});let note=t.note;
+      if(audio&&t.audio===false){
+        try{(await gUM({audio})).getAudioTracks().forEach(x=>stream.addTrack(x));note=""}catch{}
+      }
+      return {stream,note};
+    }
     catch(e){last=e;if(e.name==="NotAllowedError"||(e.name==="NotReadableError"&&!t.audio))break}
   }
   throw last;
@@ -662,12 +671,18 @@ async function stopSource(s,silent){
 }
 const isLive=s=>!!(s.stream&&s.stream.getVideoTracks().some(t=>t.readyState==="live"));
 function setupMeter(s){
-  if(!s.stream.getAudioTracks().length)return;
+  if(!s.stream.getAudioTracks().length){say(s.msg,s.msg.textContent+" No sound source is selected, so there is no audio. Pick your capture card's audio in Sound and tap Start again.","err");return}
   try{
     s.actx=new (window.AudioContext||window.webkitAudioContext)();s.actx.resume&&s.actx.resume().catch(()=>{});
     const an=s.actx.createAnalyser();an.fftSize=512;s.actx.createMediaStreamSource(s.stream).connect(an);
     const buf=new Uint8Array(an.fftSize),bar=s.q(".meter i");s.q(".meter").hidden=false;
-    s.meterTimer=setInterval(()=>{an.getByteTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v-128));bar.style.width=Math.min(100,m/128*160)+"%"},90);
+    const t0=Date.now();let heard=false,warned=false;
+    s.meterTimer=setInterval(()=>{an.getByteTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v-128));
+      bar.style.width=Math.min(100,m/128*160)+"%";
+      if(m>2)heard=true;
+      if(!heard&&!warned&&Date.now()-t0>5000){warned=true;say(s.msg,"Sound source is open but silent. Make sure the box is playing sound, or pick another source in Sound (try the one named USB3 Digital Audio).","err")}
+      if(heard&&warned){warned=false;heard=true}
+    },90);
   }catch{}
 }
 async function requestWake(){try{if("wakeLock" in navigator&&!wake){wake=await navigator.wakeLock.request("screen");wake.addEventListener("release",()=>{wake=null})}}catch{}}
@@ -1039,7 +1054,7 @@ function join(){
       if(conn!==vconn)return;
       clearTimeout(joinT);vstate("Connected",true);$("#hero").hidden=true;$("#connected").hidden=false;stage.hidden=false;
       $("#joinb").disabled=false;$("#v2").classList.add("done");
-      renderTiles();toast("Connected");say("#cmsg","Remote ready.","ok");
+      renderTiles();toast("Connected. Tap Sound to hear audio");say("#cmsg","Remote ready.","ok");
     });
     conn.on("data",onMsg);
     conn.on("close",lost);
