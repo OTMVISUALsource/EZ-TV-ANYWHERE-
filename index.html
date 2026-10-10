@@ -379,7 +379,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <li>On the viewer, tap <b>Sound</b>. Phones start muted. Sound plays from the screen you've selected.</li></ul></div></details>
   <details class="faq glass"><summary>The viewer can't connect</summary><div class="ans"><ul>
     <li>Keep the host tab open (the code only works while it is open) and check the code is typed right.</li>
-    <li>Some mobile networks block direct connections. Try Wi-Fi, a VPN to your home network, or add a TURN server in Settings.</li>
+    <li>Turn off VPN or privacy extensions (like Proton VPN) on both devices, then reload and join again.</li>
     <li>If a code stops working, tap <b>New code</b> on the host and share the new one.</li></ul></div></details>
   <details class="faq glass"><summary>Control my box without an IR blaster</summary><div class="ans"><ul>
     <li>No web page can send infrared, so EZTV uses the <b>EZTV Bridge</b>: a small program (<code>bridge.py</code>) you run on the host computer. It sends the buttons to your box over your home network.</li>
@@ -1013,14 +1013,14 @@ function join(){
   if(typeof Peer==="undefined"){say("#vmsg","Couldn't load the connection helper. Check your internet and reload.","err");return}
   vReset();$("#inv").value=prettyCode(code);
   $("#joinb").disabled=true;say("#vmsg","Connecting…");$("#v1").classList.add("done");
-  const peer=vpeer=new Peer(undefined,peerOpts());
+  let stage0="finding host";const peer=vpeer=new Peer(undefined,peerOpts());
   const fail=m=>{if(peer!==vpeer)return;vReset(true);$("#joinb").disabled=false;say("#vmsg",m,"err")};
-  joinT=setTimeout(()=>fail("Couldn't connect. Make sure the host has EZTV open. Try Wi-Fi or a VPN, or add a TURN server in Settings."),25000);
+  joinT=setTimeout(()=>fail("Couldn't connect"+(stage0?" ("+stage0+")":"")+". Make sure the host page is open and capturing, then tap Join again."),25000);
   peer.on("error",e=>{
     if(peer!==vpeer)return;
     if(e.type==="peer-unavailable")fail("That code isn't active. Check it, and make sure the host has EZTV open.");
-    else if(/network|server-error|socket/.test(e.type))fail("Can't reach the connection service. Check your internet and try again.");
-    else fail("Couldn't connect ("+e.type+"). Try again.");
+    else if(/network|server-error|socket/.test(e.type))fail("Can't reach the connection service. Turn off any VPN or privacy extension for this page, then try again.");
+    else fail("Couldn't connect ("+e.type+"). Tap Join to try again.");
   });
   peer.on("call",call=>{
     if(peer!==vpeer)return;
@@ -1029,7 +1029,7 @@ function join(){
   });
   peer.on("open",()=>{
     if(peer!==vpeer)return;
-    const conn=vconn=peer.connect("eztv-"+code,{reliable:true,serialization:"json"});
+    stage0="linking to host";say("#vmsg","Host found. Linking…");const conn=vconn=peer.connect("eztv-"+code,{reliable:true,serialization:"json"});
     const lost=()=>{
       if(conn!==vconn)return;
       vReset(true);$("#joinb").disabled=false;
