@@ -192,6 +192,10 @@ ul.peers .st{font-size:13px;color:var(--mute)}ul.peers .st.live{color:var(--good
 .hbadge{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
 .log{font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;color:var(--mute);max-height:110px;overflow:auto;white-space:pre-wrap}
 
+/* code */
+.bigcode{font:800 40px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.16em;text-align:center;padding:16px 10px;background:var(--field);border:1px solid var(--edge);border-radius:16px;user-select:all;-webkit-user-select:all}
+input.codein{font:800 26px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;text-align:center;text-transform:uppercase;min-height:56px}
+input.codein::placeholder{letter-spacing:0;font:500 15px var(--font);text-transform:none}
 /* misc */
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);opacity:0;z-index:500;background:rgba(255,255,255,.95);color:#14193f;padding:10px 18px;border-radius:999px;font-weight:700;font-size:14px;transition:all .25s;pointer-events:none;max-width:92vw;text-align:center}
 .toast.show{opacity:1;transform:translate(-50%,0)}
@@ -237,10 +241,10 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
       <span class="node hl">Your phone or tablet</span>
     </div>
     <div class="two">
-      <div><h3>At home: Host</h3><ol><li>Plug the capture card into the computer. Use one card per screen (up to 4).</li><li>Open EZTV here and tap <b>Host</b>.</li><li>Follow steps 1 to 4 and keep the tab open.</li></ol></div>
-      <div><h3>Anywhere: Watch</h3><ol><li>Open the invite link the host sent you.</li><li>Send the reply code back to the host.</li><li>Watch one screen or several, full screen, with the remote.</li></ol></div>
+      <div><h3>At home: Host</h3><ol><li>Plug the capture card into the computer. Use one card per screen (up to 4).</li><li>Open EZTV here and tap <b>Host</b>.</li><li>Follow steps 1 to 3 and keep the tab open.</li></ol></div>
+      <div><h3>Anywhere: Watch</h3><ol><li>Open the link the host sent you, or type their 6-letter code.</li><li>Tap Join. That is it, no reply needed.</li><li>Watch one screen or several, full screen, with the remote.</li></ol></div>
     </div>
-    <p class="hint">Video goes straight from the host to you. Nothing is uploaded to a server and there is no account.</p>
+    <p class="hint">Video goes straight from the host to you. A small free service only introduces your devices to each other. No account, no uploads.</p>
   </div>
 </details>
 
@@ -261,20 +265,14 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <div class="card glass" id="join">
       <h2>Connect to your host</h2>
       <div class="step" id="v1"><div class="num"><span>1</span></div><div class="body">
-        <h3>Get the invite</h3>
-        <p class="hint">Open the invite link from your host and it fills in automatically. Or paste the code or link here.</p>
-        <textarea id="inv" placeholder="Paste invite link or code" aria-label="Invite link or code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+        <h3>Enter the code</h3>
+        <p class="hint">Open the link from your host and it fills in by itself. Or type the 6-letter code.</p>
+        <input type="text" class="codein" id="inv" placeholder="Code from your host" aria-label="Host code" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off" maxlength="80">
       </div></div>
       <div class="step" id="v2"><div class="num"><span>2</span></div><div class="body">
         <h3>Join</h3>
         <button class="btn primary" id="joinb" type="button">Join</button>
         <div class="status" id="vmsg" role="status" aria-live="polite"></div>
-      </div></div>
-      <div class="step" id="v3"><div class="num"><span>3</span></div><div class="body">
-        <h3>Send your reply to the host</h3>
-        <textarea id="rep" placeholder="Your reply code appears here" readonly aria-label="Reply code" spellcheck="false"></textarea>
-        <div class="row"><button class="btn" id="cprep" type="button" disabled>Copy reply</button><button class="btn" id="shrep" type="button" hidden>Share</button></div>
-        <p class="hint">The host pastes it into step 3. When they tap Connect, the video starts.</p>
       </div></div>
     </div>
   </div>
@@ -332,27 +330,15 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     </div></div>
 
     <div class="step" id="s2"><div class="num"><span>2</span></div><div class="body">
-      <h3>Invite a viewer</h3>
-      <button class="btn primary" id="mk" type="button" disabled>Create invite</button>
-      <div id="invBox" hidden class="stack" style="gap:8px">
-        <label class="f">Invite link (send this to the viewer)<input type="url" id="offLink" readonly aria-label="Invite link"></label>
-        <div class="row"><button class="btn" id="cpl" type="button">Copy link</button><button class="btn" id="shl" type="button" hidden>Share</button></div>
-        <details><summary class="hint" style="cursor:pointer">Link too long for your app? Use the code instead</summary>
-          <textarea id="off" readonly aria-label="Invite code" spellcheck="false" style="margin-top:8px"></textarea>
-          <button class="btn small" id="cpo" type="button" style="margin-top:8px">Copy code</button></details>
-      </div>
-      <p class="hint">Add all your screens before you create the invite. New screens added later need a new invite.</p>
+      <h3>Share your code</h3>
+      <div class="bigcode" id="codeBig" aria-label="Your code">······</div>
+      <div class="row"><button class="btn primary" id="cpc" type="button">Copy code</button><button class="btn" id="cpl" type="button">Copy link</button><button class="btn" id="shl" type="button" hidden>Share</button></div>
+      <label class="f">Short link<input type="url" id="offLink" readonly aria-label="Invite link"></label>
+      <div class="status" id="hmsg" role="status" aria-live="polite">Connecting to the signal service…</div>
+      <p class="hint">Viewers type the code or open the link. They connect by themselves, nothing to paste back. Several viewers can use the same code. <button class="btn small" id="newcode" type="button">New code</button></p>
     </div></div>
 
-    <div class="step" id="s3"><div class="num"><span>3</span></div><div class="body">
-      <h3>Paste their reply</h3>
-      <textarea id="ans" placeholder="Reply code from the viewer" aria-label="Reply code" spellcheck="false"></textarea>
-      <button class="btn primary" id="acc" type="button" disabled>Connect</button>
-      <div class="status" id="hmsg" role="status" aria-live="polite"></div>
-      <p class="hint">Another viewer? Create another invite in step 2.</p>
-    </div></div>
-
-    <div class="step" id="s4"><div class="num"><span>4</span></div><div class="body">
+    <div class="step" id="s4"><div class="num"><span>3</span></div><div class="body">
       <h3>Control your box <span class="chip">optional</span></h3>
       <p class="hint">Browsers can't send infrared, but you don't need a blaster for many boxes. Run the free <b>EZTV Bridge</b> on this computer and it controls Roku, DirecTV, Fire TV and Android TV over your home network.</p>
       <label class="row" style="gap:10px;cursor:pointer"><input type="checkbox" id="bridgeOn" style="width:22px;height:22px;min-height:0;flex:none"><span><b>Use EZTV Bridge</b> (recommended)</span></label>
@@ -392,16 +378,16 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <li>On the host, pick the card's sound source (often "USB Digital Audio" or "HDMI Capture"). The level bar should move.</li>
     <li>On the viewer, tap <b>Sound</b>. Phones start muted. Sound plays from the screen you've selected.</li></ul></div></details>
   <details class="faq glass"><summary>The viewer can't connect</summary><div class="ans"><ul>
-    <li>Keep the host tab open and capturing, and use a fresh invite for every connection.</li>
+    <li>Keep the host tab open (the code only works while it is open) and check the code is typed right.</li>
     <li>Some mobile networks block direct connections. Try Wi-Fi, a VPN to your home network, or add a TURN server in Settings.</li>
-    <li>If the link is too long for your messaging app, send the invite code instead.</li></ul></div></details>
+    <li>If a code stops working, tap <b>New code</b> on the host and share the new one.</li></ul></div></details>
   <details class="faq glass"><summary>Control my box without an IR blaster</summary><div class="ans"><ul>
     <li>No web page can send infrared, so EZTV uses the <b>EZTV Bridge</b>: a small program (<code>bridge.py</code>) you run on the host computer. It sends the buttons to your box over your home network.</li>
     <li>It works with <b>Roku</b>, <b>DirecTV</b>, <b>Fire TV</b> and <b>Android / Google TV</b> (turn on ADB debugging), and with anything that has a web address to control it (Tasmota, ESPHome, Home Assistant, Harmony).</li>
     <li>Most cable company boxes (Xfinity, Spectrum, Cox, Optimum) only listen to IR or Bluetooth remotes. For those, a cheap network IR blaster (Broadlink, or an ESP with Tasmota) is the way, and the Bridge talks to it too.</li>
     <li>HDMI remote control (CEC) doesn't pass through a capture card, so it can't be used here.</li></ul></div></details>
   <details class="faq glass"><summary>Remote buttons do nothing</summary><div class="ans"><ul>
-    <li>On the host, finish step 4: tick <b>Use EZTV Bridge</b> and tap <b>Check connection</b>. It should list your devices.</li>
+    <li>On the host, finish step 3: tick <b>Use EZTV Bridge</b> and tap <b>Check connection</b>. It should list your devices.</li>
     <li>Each screen number needs a device in <code>bridge.json</code>. The viewer's message tells you what went wrong.</li>
     <li>For a webhook: on https, a plain <code>http://</code> address on your network is blocked by browsers. Use the Bridge instead, or open EZTV from <code>http://localhost:8787</code> while the Bridge is running.</li></ul></div></details>
 </section>
@@ -424,6 +410,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 "use strict";
 const $=s=>document.querySelector(s);
@@ -453,41 +440,28 @@ async function copyText(text){
 }
 async function shareText(title,text,url){try{await navigator.share({title,text,url})}catch{}}
 
-/* ---------- compact URL-safe codes ---------- */
-const b64u=b=>{let s="";b.forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")};
-const unb64u=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return Uint8Array.from(atob(s),c=>c.charCodeAt(0))};
-async function pack(d){
-  const raw=new TextEncoder().encode(JSON.stringify({t:d.type,s:d.sdp}));
-  if("CompressionStream" in window){
-    try{const buf=await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();return "Z"+b64u(new Uint8Array(buf))}catch{}
-  }
-  return "R"+b64u(raw);
+/* ---------- connection helpers ---------- */
+const CODE_ALPHA="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function newCode(){let c="";crypto.getRandomValues(new Uint8Array(6)).forEach(x=>c+=CODE_ALPHA[x%CODE_ALPHA.length]);return c}
+const prettyCode=c=>c.slice(0,3)+"-"+c.slice(3);
+function parseCode(t){
+  t=String(t||"").trim();
+  const m=t.match(/#([A-Za-z0-9]{6})\s*$/);
+  const c=(m?m[1]:t).replace(/[^A-Za-z0-9]/g,"").toUpperCase();
+  return /^[A-HJ-NP-Z2-9]{6}$/.test(c)?c:"";
 }
-async function unpack(code){
-  code=String(code).trim();
-  const m=code.match(/[#&?](?:i|r)=([^&\s]+)/);if(m)code=m[1];
-  code=code.replace(/\s+/g,"");
-  if(!/^[ZR][A-Za-z0-9_-]{20,}$/.test(code))throw new Error("bad");
-  let bytes=unb64u(code.slice(1));
-  if(code[0]==="Z"){
-    if(!("DecompressionStream" in window))throw new Error("old");
-    bytes=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
-  }
-  const j=JSON.parse(new TextDecoder().decode(bytes));
-  if(!j.t||!j.s)throw new Error("bad");
-  return {type:j.t,sdp:j.s};
-}
-function iceDone(pc,ms=7000){return new Promise(res=>{
-  if(pc.iceGatheringState==="complete")return res();
-  const t=setTimeout(res,ms);
-  pc.addEventListener("icegatheringstatechange",()=>{if(pc.iceGatheringState==="complete"){clearTimeout(t);res()}});
-})}
-function rtcConfig(){
-  const servers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302","stun:stun.cloudflare.com:3478"]}];
+function iceServers(){
+  const servers=[
+    {urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302","stun:stun.cloudflare.com:3478"]},
+    {urls:["turn:eu-0.turn.peerjs.com:3478","turn:us-0.turn.peerjs.com:3478"],username:"peerjs",credential:"peerjsp"},
+    {urls:["turn:openrelay.metered.ca:80","turn:openrelay.metered.ca:443","turn:openrelay.metered.ca:443?transport=tcp"],username:"openrelayproject",credential:"openrelayproject"}
+  ];
   const u=store.get("turnUrl").trim();
   if(u)servers.push({urls:u.split(/[\s,]+/).filter(Boolean),username:store.get("turnUser"),credential:store.get("turnPass")});
-  return {iceServers:servers,bundlePolicy:"max-bundle"};
+  return servers;
 }
+const peerOpts=()=>({debug:0,config:{iceServers:iceServers(),sdpSemantics:"unified-plan"}});
+if(typeof Peer==="undefined"){const w=document.querySelector("#unsupported");w.hidden=false;w.textContent="Couldn't load the connection helper. Check your internet, turn off ad blockers for this page, and reload."}
 
 /* ---------- shell ---------- */
 if(!window.RTCPeerConnection){const w=$("#unsupported");w.hidden=false;w.textContent="This browser can't run EZTV. Please use a recent Chrome, Edge, Safari or Firefox."}
@@ -509,7 +483,7 @@ $("#openSet").onclick=()=>{
 $("#setForm").addEventListener("submit",e=>{
   if(e.submitter&&e.submitter.value==="save"){
     store.set("bitrate",$("#bitrate").value);store.set("publicUrl",$("#pubUrl").value.trim());store.set("turnUrl",$("#turnUrl").value);
-    store.set("turnUser",$("#turnUser").value);store.set("turnPass",$("#turnPass").value);toast("Settings saved");tuneAll();
+    store.set("turnUser",$("#turnUser").value);store.set("turnPass",$("#turnPass").value);toast("Settings saved");tuneAll();if(hostCode)showCode();
   }
 });
 
@@ -527,7 +501,7 @@ const QUALITY={
 };
 const QOPTS='<option value="1080p30">1080p · 30 fps (recommended)</option><option value="1080p60">1080p · 60 fps</option><option value="720p30">720p · 30 fps (lighter)</option><option value="720p60">720p · 60 fps</option><option value="2160p30">4K · 30 fps</option><option value="auto">Auto (card default)</option>';
 const sources=[];let srcSeq=0,devs={vids:[],auds:[],loaded:false},primed=false,hostReady=false,wake=null,noMedia=false;
-const peers=new Map();let pending=null,nextId=1,serialWriter=null;
+const peers=new Map();let nextId=1,serialWriter=null,hostPeer=null,hostCode="",sigTries=0,sigTimer=null;
 
 function initHost(){
   if(hostReady)return;hostReady=true;
@@ -537,7 +511,7 @@ function initHost(){
   $("#bridgeOn").checked=store.get("bridgeOn")?store.get("bridgeOn")==="1":!!isLocal;
   syncBridge();if($("#bridgeOn").checked)checkBridge();
   noMedia=!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia;
-  addSource();renderPeers();
+  addSource();renderPeers();startSignal();
   if(noMedia){
     say("#devmsg","This page can't reach cameras. Open EZTV over https (like GitHub Pages) in Chrome, Edge, Safari or Firefox.","err");
     $("#refresh").disabled=$("#addSrc").disabled=true;sources.forEach(s=>s.q(".go").disabled=true);return;
@@ -620,7 +594,7 @@ function addSource(){
   s.tile=document.createElement("div");s.tile.className="tile show-empty";
   s.tile.innerHTML=`<video playsinline autoplay muted></video><div class="empty"><div><b>${s.name}</b>Pick a capture card and tap Start capture.</div></div><div class="chip"><i class="dot"></i><span class="nm"></span></div>`;
   s.tile.querySelector(".nm").textContent=s.name;s.tv=s.tile.querySelector("video");
-  s.onEnded=()=>{say(s.msg,"The capture card was unplugged or stopped. Plug it back in and EZTV will reconnect the picture.","err");s.tile.classList.add("show-empty");s.tile.querySelector(".dot").classList.remove("on");updateHostUI();broadcast()};
+  s.onEnded=()=>{say(s.msg,"The capture card was unplugged or stopped. Plug it back in and EZTV will reconnect the picture.","err");s.tile.classList.add("show-empty");s.tile.querySelector(".dot").classList.remove("on");syncCalls(s);updateHostUI();broadcast()};
   sources.push(s);$("#srcList").append(s.card);$("#hgrid").append(s.tile);
   if(devs.loaded)fillSource(s);
   if(noMedia)s.q(".go").disabled=true;
@@ -637,7 +611,7 @@ $("#addSrc").onclick=addSource;$("#refresh").onclick=refreshDevices;
 async function openStream(q,vid,aid){
   const audio=aid&&aid!=="-"?{deviceId:{exact:aid},echoCancellation:false,noiseSuppression:false,autoGainControl:false}:false;
   const tries=[
-    {video:{deviceId:{exact:vid},...q},audio,note:""},
+    {video:{deviceId:{exact:vid},...q,aspectRatio:{ideal:16/9}},audio,note:""},
     {video:{deviceId:{exact:vid}},audio,note:" The card picked its own quality."},
   ];
   if(audio)tries.push({video:{deviceId:{exact:vid}},audio:false,note:" Sound couldn't open, so this screen is video only."});
@@ -664,9 +638,10 @@ async function startSource(s){
     s.tv.srcObject=stream;s.tv.play().catch(()=>{});
     s.tile.classList.remove("show-empty");s.tile.querySelector(".dot").classList.add("on");
     const st=vt.getSettings();
-    say(s.msg,`Live · ${st.width||"?"}×${st.height||"?"}${st.frameRate?" @ "+Math.round(st.frameRate)+" fps":""}.${note}`,"ok");
+    const ar=(st.width&&st.height)?st.width/st.height:16/9,odd=Math.abs(ar-16/9)>0.05;
+    say(s.msg,`Live · ${st.width||"?"}×${st.height||"?"}${st.frameRate?" @ "+Math.round(st.frameRate)+" fps":""}.${note}`+(odd?" This card is NOT sending 16:9, so the picture has black bars. If this is OBS: Settings → Video, set Base and Output resolution to 1920×1080, then Stop and Start Virtual Camera and tap Start capture again.":""),odd?"err":"ok");
     s.q(".go").hidden=true;s.q(".stop").hidden=false;
-    setupMeter(s);requestWake();await pushTracks(s);
+    setupMeter(s);requestWake();syncCalls(s);
   }catch(e){say(s.msg,capError(e),"err");s.q(".go").hidden=false;s.q(".stop").hidden=true}
   s.q(".go").disabled=false;updateHostUI();broadcast();tuneAll();
 }
@@ -680,20 +655,12 @@ async function stopSource(s,silent){
   s.want=false;stopTracks(s);
   s.q(".go").hidden=false;s.q(".stop").hidden=true;
   s.tile.classList.add("show-empty");s.tile.querySelector(".dot").classList.remove("on");
-  await pushTracks(s);
+  syncCalls(s);
   if(!silent)say(s.msg,"Stopped.");
   if(!sources.some(o=>o.stream))releaseWake();
   updateHostUI();broadcast();tuneAll();
 }
-async function pushTracks(s){
-  for(const p of peers.values()){
-    const m=p.senders[s.n];if(!m)continue;
-    for(const k of ["video","audio"]){
-      const t=s.stream?(s.stream.getTracks().find(x=>x.kind===k)||null):null;
-      try{await m[k].replaceTrack(t)}catch{}
-    }
-  }
-}
+const isLive=s=>!!(s.stream&&s.stream.getVideoTracks().some(t=>t.readyState==="live"));
 function setupMeter(s){
   if(!s.stream.getAudioTracks().length)return;
   try{
@@ -709,106 +676,122 @@ document.addEventListener("visibilitychange",()=>{if(document.visibilityState===
 
 function updateHostUI(){
   const live=sources.filter(s=>s.stream).length;
-  $("#mk").disabled=!live;$("#s1").classList.toggle("done",live>0);
+  $("#s1").classList.toggle("done",live>0);
   $("#addSrc").disabled=noMedia||sources.length>=MAXSRC;
   $("#hgrid").style.setProperty("--cols",sources.length>1?2:1);
   updateBadge();
 }
-/* ----- viewers / peers ----- */
-function srcInfo(p){
-  return sources.filter(s=>p.trs[s.n]).map(s=>({id:s.out.id,n:s.n,name:s.name,live:!!s.stream,m:[p.trs[s.n].video.mid,p.trs[s.n].audio.mid]}));
+/* ----- signalling + viewers ----- */
+function showCode(){
+  $("#codeBig").textContent=hostCode?prettyCode(hostCode):"······";
+  const pub=store.get("publicUrl").trim();
+  $("#offLink").value=hostCode?(pub||location.href.split("#")[0])+"#"+hostCode:"";
 }
+function startSignal(){
+  if(hostPeer||typeof Peer==="undefined")return;
+  hostCode=hostCode||store.get("code")||newCode();store.set("code",hostCode);showCode();
+  say("#hmsg","Connecting to the signal service…");
+  const pr=hostPeer=new Peer("eztv-"+hostCode,peerOpts());
+  pr.on("open",()=>{sigTries=0;$("#s2").classList.add("done");
+    const pub=store.get("publicUrl").trim(),local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    say("#hmsg",local&&!pub?"Ready. The link starts with localhost, so send the CODE instead, or add your public link in Settings.":"Ready. Send the code or link to your viewer.","ok")});
+  pr.on("connection",onViewer);
+  pr.on("disconnected",()=>{if(hostPeer===pr&&!pr.destroyed)setTimeout(()=>{try{pr.reconnect()}catch{}},1500)});
+  pr.on("error",e=>{
+    if(hostPeer!==pr)return;
+    if(e.type==="unavailable-id"){
+      try{pr.destroy()}catch{}hostPeer=null;
+      if(++sigTries<=4){say("#hmsg","Reconnecting…");sigTimer=setTimeout(startSignal,2500)}
+      else{hostCode=newCode();store.set("code",hostCode);sigTries=0;startSignal()}
+      return;
+    }
+    if(e.type==="peer-unavailable")return;
+    say("#hmsg","Can't reach the signal service. Check this computer's internet. Retrying…","err");
+    try{pr.destroy()}catch{}hostPeer=null;clearTimeout(sigTimer);sigTimer=setTimeout(startSignal,5000);
+  });
+}
+function onViewer(conn){
+  const p={id:nextId++,conn,calls:{},name:"",live:false};p.name="Viewer "+p.id;
+  conn.on("open",()=>{
+    p.live=true;peers.set(p.id,p);
+    try{conn.send({t:"hello",out:hasOutput()});conn.send({t:"src",list:srcInfo()})}catch{}
+    sources.forEach(s=>callSource(p,s));
+    toast(p.name+" connected");$("#s2").classList.add("done");say("#hmsg",p.name+" is watching.","ok");renderPeers();
+  });
+  conn.on("data",d=>onCmd(p,d));
+  conn.on("close",()=>removePeer(p));
+  conn.on("error",()=>removePeer(p));
+  conn.on("iceStateChanged",st=>{if(st==="failed"||st==="closed")removePeer(p);else renderPeers()});
+}
+function callSource(p,s){
+  if(!hostPeer||!isLive(s)||!p.conn.open)return;
+  try{p.calls[s.n]&&p.calls[s.n].close()}catch{}
+  let call;
+  try{call=hostPeer.call(p.conn.peer,s.stream,{metadata:{n:s.n,name:s.name}})}catch{return}
+  if(!call)return;
+  p.calls[s.n]=call;
+  call.on("close",()=>{if(p.calls[s.n]===call)delete p.calls[s.n]});
+  call.on("error",()=>{});
+  try{call.peerConnection.addEventListener("connectionstatechange",()=>{if(call.peerConnection.connectionState==="connected")tuneAll()})}catch{}
+}
+function syncCalls(s){
+  peers.forEach(p=>{
+    if(isLive(s))callSource(p,s);
+    else{try{p.calls[s.n]&&p.calls[s.n].close()}catch{}delete p.calls[s.n]}
+  });
+}
+function srcInfo(){return sources.map(s=>({n:s.n,name:s.name,live:isLive(s)}))}
 function broadcast(){
-  peers.forEach(p=>{if(p.dc&&p.dc.readyState==="open")try{p.dc.send(JSON.stringify({t:"src",list:srcInfo(p)}))}catch{}});
+  peers.forEach(p=>{if(p.conn&&p.conn.open)try{p.conn.send({t:"src",list:srcInfo()})}catch{}});
 }
 function tuneAll(){
   const live=sources.filter(s=>s.stream).length||1,base=+store.get("bitrate","5000000");
   const per=Math.round(base*(live===1?1:live===2?.7:.5));
-  peers.forEach(async p=>{
-    if(p.pc.connectionState!=="connected")return;
-    for(const k in p.senders){
-      try{const sd=p.senders[k].video,prm=sd.getParameters();
-        if(!prm.encodings||!prm.encodings.length)prm.encodings=[{}];
-        prm.encodings[0].maxBitrate=per;prm.degradationPreference="maintain-framerate";await sd.setParameters(prm)}catch{}
+  peers.forEach(p=>{
+    for(const n in p.calls){
+      try{
+        p.calls[n].peerConnection.getSenders().forEach(async sd=>{
+          if(!sd.track||sd.track.kind!=="video")return;
+          const prm=sd.getParameters();
+          if(!prm.encodings||!prm.encodings.length)prm.encodings=[{}];
+          prm.encodings[0].maxBitrate=per;prm.degradationPreference="maintain-framerate";
+          try{await sd.setParameters(prm)}catch{}
+        });
+      }catch{}
     }
   });
 }
-function peerState(p){
-  if(!p.answered)return["Waiting for their reply",""];
-  const s=p.pc.connectionState;
-  if(s==="connected")return["Watching","live"];
-  if(s==="connecting"||s==="new")return["Connecting…",""];
-  return["Disconnected",""];
-}
 function updateBadge(){
-  const n=[...peers.values()].filter(p=>p.pc.connectionState==="connected").length,live=sources.filter(s=>s.stream).length;
+  const n=peers.size,live=sources.filter(s=>s.stream).length;
   const d=$("#hbadge .dot");d.classList.toggle("on",live>0&&n>0);
   $("#hbt").textContent=!live?"Not capturing":n?`${n} watching · ${live} screen${live>1?"s":""} live`:`${live} screen${live>1?"s":""} live · no viewers yet`;
 }
 function renderPeers(){
   const ul=$("#peerList");ul.innerHTML="";
-  if(!peers.size){const li=document.createElement("li");li.innerHTML='<span class="st">No viewers yet. Create an invite in step 2.</span>';ul.append(li)}
+  if(!peers.size){const li=document.createElement("li");li.innerHTML='<span class="st">No viewers yet. Share your code from step 2.</span>';ul.append(li)}
   peers.forEach(p=>{
     const li=document.createElement("li"),n=document.createElement("b"),st=document.createElement("span"),rm=document.createElement("button");
-    const [txt,cls]=peerState(p);
-    n.textContent=p.name;st.className="st "+cls;st.textContent=txt;
+    n.textContent=p.name;st.className="st live";st.textContent="Watching";
     rm.className="btn small";rm.type="button";rm.textContent="Remove";rm.onclick=()=>removePeer(p);
     const left=document.createElement("div");left.append(n,document.createElement("br"),st);
     li.append(left,rm);ul.append(li);
   });
   updateBadge();
 }
-function removePeer(p){try{p.dc&&p.dc.close()}catch{}try{p.pc.close()}catch{}peers.delete(p.id);if(pending===p){pending=null;$("#invBox").hidden=true;$("#acc").disabled=true;$("#s2").classList.remove("done")}renderPeers()}
-
-$("#mk").onclick=async()=>{
-  if(!sources.some(s=>s.stream))return;
-  if(pending)removePeer(pending);
-  $("#mk").disabled=true;say("#hmsg","");
-  const p={id:nextId++,pc:new RTCPeerConnection(rtcConfig()),dc:null,senders:{},trs:{},answered:false};
-  p.name="Viewer "+p.id;
-  try{
-    for(const s of sources){
-      p.senders[s.n]={};p.trs[s.n]={};
-      for(const kind of ["video","audio"]){
-        const t=s.stream&&s.stream.getTracks().find(x=>x.kind===kind);
-        const tr=p.pc.addTransceiver(t||kind,{direction:"sendonly",streams:[s.out]});
-        p.senders[s.n][kind]=tr.sender;p.trs[s.n][kind]=tr;
-      }
-    }
-    p.dc=p.pc.createDataChannel("ctl");
-    p.dc.onopen=()=>{try{p.dc.send(JSON.stringify({t:"hello",out:hasOutput()}));p.dc.send(JSON.stringify({t:"src",list:srcInfo(p)}))}catch{}};
-    p.dc.onmessage=e=>onCmd(p,e.data);
-    p.pc.onconnectionstatechange=()=>{
-      const st=p.pc.connectionState;
-      if(st==="connected"){tuneAll();toast(p.name+" connected");$("#s3").classList.add("done");say("#hmsg",p.name+" is watching.","ok")}
-      if(st==="failed")say("#hmsg","Connection failed. Their network may block direct links. Try Wi-Fi, a VPN, or a TURN server in Settings.","err");
-      renderPeers();
-    };
-    peers.set(p.id,p);pending=p;renderPeers();
-    $("#off").value="Preparing…";$("#invBox").hidden=false;
-    await p.pc.setLocalDescription(await p.pc.createOffer());
-    await iceDone(p.pc);
-    const code=await pack(p.pc.localDescription);
-    $("#off").value=code;const pub=store.get("publicUrl").trim(),local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-    $("#offLink").value=(pub||location.href.split("#")[0])+"#i="+code;
-    $("#acc").disabled=false;$("#ans").value="";$("#s2").classList.add("done");$("#s3").classList.remove("done");
-    say("#hmsg",local&&!pub?"This link starts with localhost, so the viewer should open your public EZTV page and paste it into the invite box. Add your public link in Settings to fix that.":"Send the invite link to the viewer, then paste their reply below.");
-  }catch(e){removePeer(p);say("#hmsg","Couldn't create the invite. Reload the page and try again.","err")}
-  $("#mk").disabled=!sources.some(s=>s.stream);
-};
+function removePeer(p){
+  if(!peers.has(p.id)&&!p.live)return;
+  for(const n in p.calls){try{p.calls[n].close()}catch{}}
+  try{p.conn.close()}catch{}
+  peers.delete(p.id);p.live=false;renderPeers();
+}
+$("#cpc").onclick=()=>copyText(hostCode);
 $("#cpl").onclick=()=>copyText($("#offLink").value);
-$("#cpo").onclick=()=>copyText($("#off").value);
-$("#shl").onclick=()=>shareText("Watch on EZTV","Open this link to watch:",$("#offLink").value);
-$("#acc").onclick=async()=>{
-  if(!pending)return;
-  try{
-    const d=await unpack($("#ans").value);if(d.type!=="answer")throw new Error("bad");
-    await pending.pc.setRemoteDescription(d);
-    pending.answered=true;const p=pending;pending=null;
-    $("#acc").disabled=true;$("#ans").value="";$("#mk").textContent="Add another viewer";
-    say("#hmsg","Connecting…");renderPeers();
-    setTimeout(()=>{if(p.pc.connectionState!=="connected"&&p.pc.connectionState!=="failed")say("#hmsg","Still connecting… make sure the viewer's page is open.")},8000);
-  }catch(e){say("#hmsg",e.message==="old"?"This browser can't read that code. Update your browser.":"That reply code isn't valid. Copy all of it again from the viewer.","err")}
+$("#shl").onclick=()=>shareText("Watch on EZTV","Open this link to watch, or use code "+prettyCode(hostCode)+":",$("#offLink").value);
+$("#newcode").onclick=()=>{
+  if(peers.size&&!confirm("This disconnects everyone and makes a new code. Continue?"))return;
+  [...peers.values()].forEach(removePeer);
+  try{hostPeer&&hostPeer.destroy()}catch{}hostPeer=null;clearTimeout(sigTimer);
+  hostCode=newCode();store.set("code",hostCode);sigTries=0;startSignal();
 };
 
 /* ----- remote output ----- */
@@ -832,12 +815,12 @@ async function run(c,n){
   if(h){try{await fetch(h.replace(/\{cmd\}/g,encodeURIComponent(c)).replace(/\{src\}/g,String(n)),{mode:"no-cors",cache:"no-store"});ok=true}catch{say("#outmsg","Webhook couldn't be reached. On https, use an https webhook.","err")}}
   return ok;
 }
-async function onCmd(p,raw){
-  let m;try{m=JSON.parse(raw)}catch{return}
-  if(!m.c||typeof m.c!=="string"||m.c.length>24||!/^[a-z0-9_]+$/i.test(m.c))return;
+async function onCmd(p,m){
+  if(typeof m==="string"){try{m=JSON.parse(m)}catch{return}}
+  if(!m||!m.c||typeof m.c!=="string"||m.c.length>24||!/^[a-z0-9_]+$/i.test(m.c))return;
   const n=Number.isInteger(m.s)?m.s:(sources[0]?sources[0].n:1);
   const ok=await run(m.c,n);
-  try{p.dc.send(JSON.stringify({t:"ack",c:m.c,out:ok,err:ok?"":runErr}))}catch{}
+  try{p.conn.send({t:"ack",c:m.c,out:ok,err:ok?"":runErr})}catch{}
 }
 function syncBridge(){
   $("#bridgeBox").hidden=!$("#bridgeOn").checked;
@@ -877,16 +860,15 @@ $("#testout").onclick=async()=>{
    ===================================================== */
 const stage=$("#stage"),tilesEl=$("#tiles");
 const tiles=new Map();
-let rx=[],lastList=null,vpc=null,vdc=null,lostT=null,activeId=null,layout=store.get("layout","grid"),fit=store.get("fit","contain"),soundOn=false,idleT=null;
+let vpeer=null,vconn=null,joinT=null,lostT=null,activeId=null,layout=store.get("layout","grid"),fit=store.get("fit","contain"),soundOn=false,idleT=null;
 
 function vReset(keepMsg){
-  clearTimeout(lostT);
-  try{vdc&&vdc.close()}catch{}try{vpc&&vpc.close()}catch{}
-  vpc=vdc=null;rx=[];lastList=null;
+  clearTimeout(lostT);clearTimeout(joinT);
+  const c=vconn,p=vpeer;vconn=vpeer=null;
+  try{c&&c.close()}catch{}try{p&&p.destroy()}catch{}
   exitFS();tiles.forEach(t=>{t.video.srcObject=null});tiles.clear();tilesEl.innerHTML="";activeId=null;
   stage.hidden=true;$("#connected").hidden=true;$("#hero").hidden=false;
-  $("#rep").value="";$("#cprep").disabled=true;$("#shrep").hidden=true;
-  ["#v1","#v2","#v3"].forEach(s=>$(s).classList.remove("done"));
+  ["#v1","#v2"].forEach(s=>$(s).classList.remove("done"));
   if(!keepMsg)say("#vmsg","");
 }
 function getTile(id){
@@ -937,24 +919,20 @@ function renderTarget(){
 }
 function applyAudio(){tiles.forEach(t=>{t.video.muted=!(soundOn&&t.id===activeId)})}
 function setActive(id){if(!tiles.has(id))return;activeId=id;renderTiles()}
-function attach(){
-  if(!lastList)return;
-  for(const r of rx){
-    if(r.done)continue;
-    const x=lastList.find(i=>(r.mid!=null&&Array.isArray(i.m)&&i.m.includes(r.mid))||(r.sid&&i.id===r.sid));
-    if(!x)continue;
-    const t=getTile(x.id);t.stream.addTrack(r.track);r.done=true;
-    t.video.srcObject=t.stream;t.video.play().catch(()=>{});
-  }
-}
 function updateTiles(list){
-  lastList=list;
-  const ids=new Set(list.map(x=>x.id));
-  list.forEach((x,i)=>{const t=getTile(x.id);t.n=x.n;t.name=x.name;t.live=x.live;t.order=i});
-  attach();
+  const ids=new Set(list.map(x=>"s"+x.n));
+  list.forEach((x,i)=>{
+    const t=getTile("s"+x.n);t.n=x.n;t.name=x.name;t.live=x.live;t.order=i;
+    if(!x.live){t.video.srcObject=null;t.stream=null}
+  });
   tiles.forEach((t,id)=>{if(!ids.has(id)){t.video.srcObject=null;t.el.remove();tiles.delete(id)}});
   renderTiles();
   $("#vinfo").textContent=list.length>1?`${list.length} screens`:"";
+}
+function onStream(meta,st){
+  const n=meta&&meta.n;if(!Number.isInteger(n))return;
+  const t=getTile("s"+n);t.n=n;t.live=true;t.stream=st;
+  t.video.srcObject=st;t.video.play().catch(()=>{});renderTiles();
 }
 $("#tiles").addEventListener("click",e=>{
   const tile=e.target.closest(".tile");if(!tile)return;const t=tiles.get(tile.dataset.id);if(!t)return;
@@ -1029,54 +1007,53 @@ $("#bar").addEventListener("click",async e=>{
 
 /* ----- joining ----- */
 function vstate(txt,on){$("#vchip").textContent=txt;$("#connected").querySelector(".dot").classList.toggle("on",!!on)}
-async function join(){
-  const txt=$("#inv").value;
-  if(!txt.trim()){say("#vmsg","Paste the invite link or code from the host first.","err");return}
-  let offer;
-  try{offer=await unpack(txt);if(offer.type!=="offer")throw new Error("bad")}
-  catch(e){say("#vmsg",e.message==="old"?"This browser can't read the invite. Update your browser.":"That invite isn't valid. Ask the host for a fresh link.","err");return}
-  vReset();$("#inv").value=txt;
-  $("#joinb").disabled=true;say("#vmsg","Joining…");$("#v1").classList.add("done");
-  try{
-    const pc=vpc=new RTCPeerConnection(rtcConfig());
-    pc.ontrack=e=>{
-      rx.push({track:e.track,mid:e.transceiver?e.transceiver.mid:null,sid:e.streams[0]?e.streams[0].id:null,done:false});
-      attach();
-    };
-    pc.ondatachannel=e=>{
-      vdc=e.channel;
-      vdc.onopen=()=>say("#cmsg","Remote ready.","ok");
-      vdc.onmessage=onMsg;
-    };
+function join(){
+  const code=parseCode($("#inv").value);
+  if(!code){say("#vmsg",$("#inv").value.trim()?"That code isn't right. It has 6 letters and numbers.":"Enter the code from your host first.","err");return}
+  if(typeof Peer==="undefined"){say("#vmsg","Couldn't load the connection helper. Check your internet and reload.","err");return}
+  vReset();$("#inv").value=prettyCode(code);
+  $("#joinb").disabled=true;say("#vmsg","Connecting…");$("#v1").classList.add("done");
+  const peer=vpeer=new Peer(undefined,peerOpts());
+  const fail=m=>{if(peer!==vpeer)return;vReset(true);$("#joinb").disabled=false;say("#vmsg",m,"err")};
+  joinT=setTimeout(()=>fail("Couldn't connect. Make sure the host has EZTV open. Try Wi-Fi or a VPN, or add a TURN server in Settings."),25000);
+  peer.on("error",e=>{
+    if(peer!==vpeer)return;
+    if(e.type==="peer-unavailable")fail("That code isn't active. Check it, and make sure the host has EZTV open.");
+    else if(/network|server-error|socket/.test(e.type))fail("Can't reach the connection service. Check your internet and try again.");
+    else fail("Couldn't connect ("+e.type+"). Try again.");
+  });
+  peer.on("call",call=>{
+    if(peer!==vpeer)return;
+    call.answer();
+    call.on("stream",st=>onStream(call.metadata,st));
+  });
+  peer.on("open",()=>{
+    if(peer!==vpeer)return;
+    const conn=vconn=peer.connect("eztv-"+code,{reliable:true,serialization:"json"});
     const lost=()=>{
-      if(pc!==vpc)return;
+      if(conn!==vconn)return;
       vReset(true);$("#joinb").disabled=false;
-      say("#vmsg","The connection ended. Ask the host for a fresh invite link to reconnect.","err");
+      say("#vmsg","The connection ended. Tap Join to reconnect.","err");
     };
-    pc.onconnectionstatechange=()=>{
-      if(pc!==vpc)return;
-      const s=pc.connectionState;clearTimeout(lostT);
-      if(s==="connected"){
-        vstate("Connected",true);$("#hero").hidden=true;$("#connected").hidden=false;stage.hidden=false;
-        renderTiles();tiles.forEach(t=>t.video.play().catch(()=>{}));toast("Connected");
-      }else if(s==="connecting"){vstate("Connecting…",false)}
-      else if(s==="disconnected"){vstate("Reconnecting…",false);lostT=setTimeout(()=>{if(pc===vpc&&pc.connectionState!=="connected")lost()},10000)}
-      else if(s==="failed"){vReset(true);$("#joinb").disabled=false;say("#vmsg","Couldn't connect. Try Wi-Fi, a VPN to your home network, or a TURN server in Settings. Then ask the host for a fresh invite.","err")}
-      else if(s==="closed")lost();
-    };
-    await pc.setRemoteDescription(offer);
-    await pc.setLocalDescription(await pc.createAnswer());
-    $("#rep").value="Preparing…";await iceDone(pc);
-    $("#rep").value=await pack(pc.localDescription);
-    $("#cprep").disabled=false;$("#shrep").hidden=!canShare;$("#v2").classList.add("done");
-    say("#vmsg","Joined. Now send your reply code to the host.","ok");
-    $("#rep").scrollIntoView({behavior:"smooth",block:"center"});
-  }catch(e){say("#vmsg","Couldn't join. Reload the page and try again.","err")}
-  $("#joinb").disabled=false;
+    conn.on("open",()=>{
+      if(conn!==vconn)return;
+      clearTimeout(joinT);vstate("Connected",true);$("#hero").hidden=true;$("#connected").hidden=false;stage.hidden=false;
+      $("#joinb").disabled=false;$("#v2").classList.add("done");
+      renderTiles();toast("Connected");say("#cmsg","Remote ready.","ok");
+    });
+    conn.on("data",onMsg);
+    conn.on("close",lost);
+    conn.on("error",lost);
+    conn.on("iceStateChanged",st=>{
+      if(conn!==vconn)return;clearTimeout(lostT);
+      if(st==="connected"||st==="completed"){vstate("Connected",true);tiles.forEach(t=>t.video.play().catch(()=>{}))}
+      else if(st==="disconnected"){vstate("Reconnecting…",false);lostT=setTimeout(lost,10000)}
+      else if(st==="failed"||st==="closed")lost();
+    });
+  });
 }
 $("#joinb").onclick=join;
-$("#cprep").onclick=()=>copyText($("#rep").value);
-$("#shrep").onclick=()=>shareText("EZTV reply","My reply code:",$("#rep").value);
+$("#inv").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();join()}});
 $("#leave").onclick=()=>{vReset();$("#inv").value=""};
 
 /* ----- remote ----- */
@@ -1087,16 +1064,17 @@ $("#leave").onclick=()=>{vReset();$("#inv").value=""};
 function press(c,el){
   if(el){el.classList.add("hit");setTimeout(()=>el.classList.remove("hit"),140)}
   if(navigator.vibrate)navigator.vibrate(12);
-  if(vdc&&vdc.readyState==="open"){
+  if(vconn&&vconn.open){
     const t=tiles.get(activeId),msg={c};if(t&&Number.isInteger(t.n))msg.s=t.n;
-    try{vdc.send(JSON.stringify(msg));say("#cmsg","")}catch{say("#cmsg","Couldn't send. Check your connection.","err")}
+    try{vconn.send(msg);say("#cmsg","")}catch{say("#cmsg","Couldn't send. Check your connection.","err")}
   }else say("#cmsg","Not connected to the host yet.","err");
 }
-function onMsg(e){
-  let m;try{m=JSON.parse(e.data)}catch{return}
+function onMsg(m){
+  if(typeof m==="string"){try{m=JSON.parse(m)}catch{return}}
+  if(!m)return;
   if(m.t==="src"&&Array.isArray(m.list))updateTiles(m.list);
-  else if(m.t==="hello"&&m.out===false)say("#cmsg","Connected. The host hasn't set up a remote output yet (Host → step 4).");
-  else if(m.t==="ack")m.out?say("#cmsg","Sent “"+m.c+"”","ok"):say("#cmsg",m.err?("The host got “"+m.c+"” but: "+m.err+"."):("The host got “"+m.c+"” but has no remote output set up (Host → step 4)."),"err");
+  else if(m.t==="hello"&&m.out===false)say("#cmsg","Connected. The host hasn't set up a remote output yet (Host → step 3).");
+  else if(m.t==="ack")m.out?say("#cmsg","Sent “"+m.c+"”","ok"):say("#cmsg",m.err?("The host got “"+m.c+"” but: "+m.err+"."):("The host got “"+m.c+"” but has no remote output set up (Host → step 3)."),"err");
 }
 $("#remote").addEventListener("click",e=>{const b=e.target.closest("[data-c]");if(b)press(b.dataset.c,b)});
 const KEYS={ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",Enter:"ok",Escape:"back",PageUp:"ch_up",PageDown:"ch_down"};
@@ -1108,14 +1086,14 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape"&&stage.classList.contains("pfs")){exitFS();afterFS();return}
   if(e.key==="Enter"&&/^(BUTTON|A|SUMMARY)$/.test(e.target.tagName))return;
   const c=KEYS[e.key]||(/^[0-9]$/.test(e.key)?e.key:null);
-  if(c&&vdc&&vdc.readyState==="open"){e.preventDefault();press(c,document.querySelector(`#remote [data-c="${c}"]`))}
+  if(c&&vconn&&vconn.open){e.preventDefault();press(c,document.querySelector(`#remote [data-c="${c}"]`))}
 });
 
 /* ----- boot ----- */
 setIcon("#iLayout","grid");setIcon("#iSound","mute");setIcon("#iFs","expand");
 (function boot(){
-  const m=location.hash.match(/[#&]i=([^&]+)/);
-  if(m){$("#inv").value=m[1];history.replaceState(null,"",location.pathname+location.search);setMode("view");setTimeout(join,150)}
+  const m=location.hash.match(/^#([A-Za-z0-9]{6})$/);
+  if(m){$("#inv").value=m[1].toUpperCase();history.replaceState(null,"",location.pathname+location.search);setMode("view");setTimeout(join,150)}
   else setMode(store.get("mode","view"));
 })();
 </script>
