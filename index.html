@@ -120,6 +120,10 @@ body.ishome{background:radial-gradient(55% 38% at 18% 12%,#ffbfdd99,transparent)
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:55}
 #flash.go{animation:flk .55s ease-out}@keyframes flk{0%{opacity:0}6%{opacity:.96}100%{opacity:0}}
 #sndb.mute{opacity:.4;text-decoration:line-through}
+#cdw{position:absolute;left:0;right:0;bottom:3%;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;z-index:3}
+#cdw>#cd{position:static;inset:auto;display:block;line-height:1;font-size:min(15vw,84px)}
+#cdw>#cd.brk{font-size:min(11vw,60px)}
+#cdw>#msg{position:static;margin:0;transform:none;width:max-content;max-width:94%;font-size:clamp(16px,4.6vw,28px);padding:6px 18px}
 </style></head><body class="ishome">
 
 <div id="lang"><button data-l="en" class="sel">EN</button><button data-l="es">ES</button><button id="sndb" aria-label="Sound">♪</button></div>
@@ -138,7 +142,7 @@ body.ishome{background:radial-gradient(55% 38% at 18% 12%,#ffbfdd99,transparent)
  <div id="props"><div class="glow" data-t="props1"></div><small data-t="props2"></small></div>
  <div id="vf" class="mirror"><video id="v" playsinline muted autoplay></video><canvas id="bgc" width="640" height="480" hidden></canvas><div id="tint"></div><canvas id="pv" hidden></canvas>
   <div id="nocam" hidden><div><b style="font-size:20px" data-t="needcam"></b><p data-t="needcam2"></p><button class="big" id="allow" data-t="allowbtn"></button><p id="why"></p></div></div>
-  <div id="cd" hidden></div><div id="msg" hidden></div><div id="phase" hidden></div><div id="fl"></div></div>
+  <div id="cdw"><div id="cd" hidden></div><div id="msg" hidden></div></div><div id="phase" hidden></div><div id="fl"></div></div>
  <div class="seg" id="flt"><button data-f="none" class="sel" data-t="f_none"></button><button data-f="bw" data-t="f_bw"></button><button data-f="rainbow" data-t="f_rainbow"></button><button data-f="pink" data-t="f_pink"></button></div>
  <div class="seg" id="bgm"><button data-b="off" class="sel" data-t="bgoff"></button><button data-b="magic" data-t="bgmagic"></button></div>
  <div id="bgp" hidden><div class="seg" id="bgt"></div><label class="rng"><span data-t="bgsens"></span><input type="range" id="sens" min="0" max="100" value="55"></label><p id="bgstat" style="font-weight:600;color:var(--deep)"></p><button id="bgcap" data-t="bgcap" hidden></button><p id="bgtip"></p></div>
@@ -449,15 +453,24 @@ try{lang=localStorage.getItem('rrl')||(navigator.language||'en').slice(0,2)}catc
 $('#lang').onclick=e=>{const b=e.target.closest('button');if(b&&b.dataset.l)setLang(b.dataset.l)};
 setLang(lang=='es'?'es':'en');
 // ---------- sound effects (synthesized, no files) ----------
-let AC=null,SND=true;try{SND=localStorage.getItem('rrs')!=='0'}catch(e){}
-function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)try{AC=new C()}catch(e){}}if(AC&&AC.state=='suspended')AC.resume();return AC}
-['pointerdown','touchend','click'].forEach(ev=>addEventListener(ev,ac,{capture:true,passive:true}));
-function tone(fr,d,type,g,w=0){if(!SND)return;const a=ac();if(!a)return;const t=a.currentTime+w,o=a.createOscillator(),n=a.createGain();o.type=type;o.frequency.setValueAtTime(fr,t);n.gain.setValueAtTime(.0001,t);n.gain.exponentialRampToValueAtTime(g,t+.01);n.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(n);n.connect(a.destination);o.start(t);o.stop(t+d+.03)}
-function noise(d,hp,g,w=0){if(!SND)return;const a=ac();if(!a)return;const len=Math.max(1,Math.floor(a.sampleRate*d)),b=a.createBuffer(1,len,a.sampleRate),x=b.getChannelData(0);for(let i=0;i<len;i++)x[i]=(Math.random()*2-1)*(1-i/len);
- const t=a.currentTime+w,s=a.createBufferSource(),f=a.createBiquadFilter(),n=a.createGain();s.buffer=b;f.type='highpass';f.frequency.value=hp;n.gain.setValueAtTime(g,t);n.gain.exponentialRampToValueAtTime(.0001,t+d);s.connect(f);f.connect(n);n.connect(a.destination);s.start(t)}
-const SFX={tick(prep,k){if(prep)tone(520,.09,'sine',.09);else if(k>1)tone(700+(5-k)*45,.11,'triangle',.2);else tone(1040,.24,'triangle',.24)},
- shutter(){noise(.04,2500,.55);tone(190,.07,'square',.1,.01);noise(.06,1200,.4,.075);tone(120,.09,'square',.09,.08)},
- chime(){[880,1108,1318,1760].forEach((fr,i)=>tone(fr,.4,'sine',.14,i*.09))}};
+let SND=true;try{SND=localStorage.getItem('rrs')!=='0'}catch(e){}
+const SR=22050,E={};
+function mkWav(a){const n=a.length,b=new ArrayBuffer(44+n*2),d=new DataView(b),w=(o,t)=>{for(let i=0;i<t.length;i++)d.setUint8(o+i,t.charCodeAt(i))};
+ w(0,'RIFF');d.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);d.setUint32(24,SR,true);d.setUint32(28,SR*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);w(36,'data');d.setUint32(40,n*2,true);
+ for(let i=0;i<n;i++)d.setInt16(44+i*2,Math.max(-1,Math.min(1,a[i]))*32767,true);return URL.createObjectURL(new Blob([b],{type:'audio/wav'}))}
+function syn(dur,fn){const n=Math.floor(SR*dur),a=new Float32Array(n);for(let i=0;i<n;i++)a[i]=fn(i/SR);return a}
+function wt(f,d,g,ty){return syn(d,t=>{const p=(f*t)%1,v=ty=='tri'?Math.abs(p*4-2)-1:ty=='sq'?(p<.5?1:-1):Math.sin(6.2832*f*t);return v*g*Math.min(1,t/.005)*Math.exp(-t*5/d)})}
+function nz(d,g){let pv=0;return syn(d,t=>{const r=Math.random()*2-1,v=r-pv;pv=r;return v*.5*g*Math.exp(-t*5/d)})}
+function mx(parts,dur){const n=Math.floor(SR*dur),a=new Float32Array(n);parts.forEach(([off,arr])=>{const o=Math.floor(off*SR);for(let i=0;i<arr.length&&o+i<n;i++)a[o+i]+=arr[i]});return a}
+function buildSfx(){if(E.shutter)return;const src={prep:wt(520,.1,.6,'sin'),t5:wt(700,.12,.8,'tri'),t4:wt(745,.12,.8,'tri'),t3:wt(790,.12,.8,'tri'),t2:wt(835,.12,.8,'tri'),t1:wt(1040,.26,.9,'tri'),
+  shutter:mx([[0,nz(.04,1.4)],[0,wt(190,.07,.7,'sq')],[.075,nz(.06,1.2)],[.08,wt(120,.09,.7,'sq')]],.2),
+  chime:mx([880,1108,1318,1760].map((f,i)=>[i*.09,wt(f,.4,.55,'sin')]),.8)};
+ for(const k in src){const a=new Audio(mkWav(src[k]));a.preload='auto';a.setAttribute('playsinline','');a.volume=1;E[k]=a}}
+let unlocked=0;
+function unlock(){buildSfx();if(unlocked>=2)return;unlocked++;for(const k in E){const a=E[k];a.muted=true;const p=a.play();if(p&&p.then)p.then(()=>{a.pause();a.currentTime=0;a.muted=false}).catch(()=>{a.muted=false;unlocked=Math.max(0,unlocked-1)});else a.muted=false}}
+['pointerdown','touchend','click'].forEach(ev=>addEventListener(ev,unlock,{capture:true,passive:true}));
+function play(k){if(!SND||!E[k])return;const a=E[k];try{a.muted=false;a.currentTime=0;const p=a.play();if(p&&p.catch)p.catch(()=>{})}catch(e){}}
+const SFX={tick(prep,k){play(prep?'prep':'t'+k)},shutter(){play('shutter')},chime(){play('chime')}};
 function bigFlash(){const f=$('#flash');f.classList.remove('go');void f.offsetWidth;f.classList.add('go');try{$('#vf').animate([{transform:'scale(1)'},{transform:'scale(.98)'},{transform:'scale(1)'}],{duration:200})}catch(e){}}
 $('#sndb').classList.toggle('mute',!SND);
 $('#sndb').onclick=e=>{e.stopPropagation();SND=!SND;try{localStorage.setItem('rrs',SND?'1':'0')}catch(x){}$('#sndb').classList.toggle('mute',!SND);if(SND)SFX.chime()};
