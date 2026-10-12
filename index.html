@@ -368,7 +368,9 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
       <h3>Invite a viewer</h3>
       <button class="btn primary" id="mk" type="button" disabled>Create invite</button>
       <div id="invBox" hidden class="stack" style="gap:8px">
+        <canvas id="qrCv" hidden aria-label="QR code for the invite link" style="display:block;margin:0 auto 6px;width:min(220px,70vw);height:auto;border-radius:12px;background:#fff"></canvas>
         <div id="codeBig" hidden style="text-align:center;font:700 34px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;padding:14px 8px;margin-bottom:6px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);user-select:all"></div>
+        <p class="hint" id="relayState" style="text-align:center;margin:0 0 6px"></p>
         <label class="f">Invite link (send this to the viewer)<input type="url" id="offLink" readonly aria-label="Invite link"></label>
         <div class="row"><button class="btn" id="cpl" type="button">Copy link</button><button class="btn" id="shl" type="button" hidden>Share</button></div>
         <details><summary class="hint" style="cursor:pointer">Show the long code (backup)</summary>
@@ -407,9 +409,11 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <div class="step" id="s5"><div class="num"><span>5</span></div><div class="body">
       <h3>Watch over mobile data <span class="chip">free</span></h3>
       <p class="hint">Phones on your Wi-Fi connect directly. To watch from anywhere, including mobile data, turn this on. You get a private link with picture and sound. Nothing to install, and the picture is encrypted so the free relay can't see it. Keep this page open. It uses your home internet upload, so use Data saver in Settings if it stutters.</p>
-      <div class="row"><button class="btn primary" id="rlGo" type="button">Turn on mobile data link</button><button class="btn danger" id="rlOff" type="button" hidden>Turn off</button></div>
+      <div class="row"><button class="btn primary" id="rlGo" type="button">Turn on mobile data link</button><button class="btn danger" id="rlOff" type="button" hidden>Turn off</button><button class="btn" id="rlDiag" type="button">Check connection</button></div>
+      <pre id="rlDiagOut" style="white-space:pre-wrap;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;margin:8px 0 0" aria-live="polite"></pre>
       <div class="status" id="rlMsg" role="status" aria-live="polite"></div>
       <div id="rlBox" hidden class="stack" style="gap:8px">
+        <canvas id="rlQr" hidden aria-label="QR code for the private link" style="display:block;margin:0 auto;width:min(220px,70vw);height:auto;border-radius:12px;background:#fff"></canvas>
         <label class="f">Private link for your phone<input type="url" id="rlLink" readonly aria-label="Private link"></label>
         <div class="row"><button class="btn" id="rlCopy" type="button">Copy link</button><button class="btn" id="rlShare" type="button" hidden>Share</button></div>
         <p class="hint" id="rlWho"></p>
@@ -459,7 +463,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <li>For a webhook: on https, a plain <code>http://</code> address on your network is blocked by browsers. Use the Bridge instead, or open EZTV from <code>http://localhost:8787</code> while the Bridge is running.</li></ul></div></details>
 </section>
 </main>
-<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 5 · direct + mobile data</span></footer>
+<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 6 · QR invite + mobile data</span></footer>
 </div>
 
 <dialog id="settings">
@@ -884,6 +888,7 @@ $("#mk").onclick=async()=>{
   if(!sources.some(s=>s.stream))return;
   if(pending)removePeer(pending);
   $("#mk").disabled=true;say("#hmsg","");
+  if(window.EZRelay)EZRelay.ensure().catch(()=>{});          // start the mobile data relay now so it is ready by the time the phone joins
   const p={id:nextId++,pc:new RTCPeerConnection(rtcConfig()),dc:null,senders:{},trs:{},answered:false};
   p.name="Viewer "+p.id;
   try{
@@ -918,9 +923,10 @@ $("#mk").onclick=async()=>{
     if(short){
       p.code=short;$("#codeBig").hidden=false;$("#codeBig").textContent=fmtCode(short);
       $("#off").value=fmtCode(short);$("#offLink").value=base+"#c="+short;
+      try{$("#qrCv").hidden=!eztvQRDraw($("#qrCv"),$("#offLink").value,6)}catch{$("#qrCv").hidden=true}
       p.stopWatch=sigWatch(short,"a",txt=>{if(p.answered||p.dead)return;applyAnswer(p,txt,true)},()=>p.answered||p.dead||!peers.has(p.id));
     }else{
-      $("#codeBig").hidden=true;$("#off").value=code;$("#offLink").value=base+"#i="+code;
+      $("#codeBig").hidden=true;$("#qrCv").hidden=true;$("#off").value=code;$("#offLink").value=base+"#i="+code;
     }
     $("#acc").disabled=false;$("#ans").value="";$("#s2").classList.add("done");$("#s3").classList.remove("done");
     say("#hmsg",short?"Send the viewer this code or link. When they join, it connects by itself.":local&&!pub?"This link starts with localhost, so the viewer should open your public EZTV page and paste it into the invite box. Add your public link in Settings to fix that.":"Send the invite link to the viewer, then paste their reply below.");
@@ -936,7 +942,7 @@ async function applyAnswer(p,txt,auto){
     const d=await unpack(txt);if(d.type!=="answer")throw new Error("bad");
     await p.pc.setRemoteDescription(d);
     p.answered=true;try{p.stopWatch&&p.stopWatch()}catch{}
-    if(pending===p){pending=null;$("#codeBig").hidden=true}
+    if(pending===p){pending=null;$("#codeBig").hidden=true;$("#qrCv").hidden=true}
     $("#acc").disabled=true;$("#ans").value="";$("#mk").textContent="Add another viewer";
     say("#hmsg","Connecting…");renderPeers();
     setTimeout(()=>{if(p.pc.connectionState!=="connected"&&p.pc.connectionState!=="failed")say("#hmsg","Still connecting… make sure the viewer's page is open.")},8000);
@@ -1018,7 +1024,7 @@ function vReset(keepMsg){
   vpc=vdc=null;rx=[];lastList=null;
   exitFS();tiles.forEach(t=>{t.video.srcObject=null});tiles.clear();tilesEl.innerHTML="";activeId=null;
   stage.hidden=true;$("#connected").hidden=true;$("#hero").hidden=false;
-  $("#rep").value="";$("#cprep").disabled=true;$("#shrep").hidden=true;
+  $("#rep").value="";$("#cprep").disabled=true;$("#shrep").hidden=true;$("#v3").hidden=false;
   ["#v1","#v2","#v3"].forEach(s=>$(s).classList.remove("done"));
   if(!keepMsg)say("#vmsg","");
 }
@@ -1175,7 +1181,7 @@ async function join(){
   let offer;
   try{offer=await unpack(txt);if(offer.type!=="offer")throw new Error("bad")}
   catch(e){say("#vmsg",e.message==="old"?"This browser can't read the invite. Update your browser.":"That invite isn't valid. Ask the host for a fresh link.","err");return}
-  vReset();$("#inv").value=txt;
+  vReset();$("#inv").value=short?fmtCode(short):txt;
   $("#joinb").disabled=true;say("#vmsg","Joining…");$("#v1").classList.add("done");
   try{
     const pc=vpc=new RTCPeerConnection(rtcConfig());
@@ -1188,8 +1194,10 @@ async function join(){
       vdc.onopen=()=>say("#cmsg","Remote ready.","ok");
       vdc.onmessage=onMsg;
     };
-    const toRelay=()=>{
-      if(!fb||pc!==vpc||!window.EZRelayViewer)return false;
+    const toRelay=async()=>{
+      if(pc!==vpc||!window.EZRelayViewer)return false;
+      if(!fb&&short){const rs=await sigGet(short,"r",3);if(/^[a-z0-9]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(rs||""))fb=rs}
+      if(!fb||pc!==vpc)return false;
       clearTimeout(fbT);vReset(true);$("#joinb").disabled=false;
       say("#vmsg","Switching to mobile data mode…","ok");window.EZRelayViewer.start(fb);return true;
     };
@@ -1207,7 +1215,7 @@ async function join(){
         renderTiles();tiles.forEach(t=>t.video.play().catch(()=>{}));toast("Connected");
       }else if(s==="connecting"){vstate("Connecting…",false)}
       else if(s==="disconnected"){vstate("Reconnecting…",false);lostT=setTimeout(()=>{if(pc===vpc&&pc.connectionState!=="connected")lost()},10000)}
-      else if(s==="failed"){if(toRelay())return;vReset(true);$("#joinb").disabled=false;say("#vmsg","Couldn't connect. Try Wi-Fi, a VPN to your home network, or a TURN server. Then ask the host for a fresh invite.","err");turnBtn("#vmsg")}
+      else if(s==="failed"){toRelay().then(ok=>{if(ok||pc!==vpc)return;vReset(true);$("#joinb").disabled=false;say("#vmsg",short?"Couldn't connect directly, and the host's mobile data relay isn't ready. On the host, open EZTV, create a new invite, wait for \"Mobile data mode: ready\", then join again.":"Couldn't connect. Join with the short code from the host, or use the same Wi-Fi.","err")})}
       else if(s==="closed")lost();
     };
     await pc.setRemoteDescription(offer);
@@ -1216,7 +1224,8 @@ async function join(){
     const rep=await pack(pc.localDescription);$("#rep").value=rep;
     $("#cprep").disabled=false;$("#shrep").hidden=!canShare;$("#v2").classList.add("done");
     let sent=false;if(short){try{await sigPost(short,"a",rep);sent=true}catch{}}
-    if(sent&&fb)fbT=setTimeout(()=>{if(pc===vpc&&pc.connectionState!=="connected")toRelay()},9000);
+    $("#v3").hidden=!!sent;
+    if(sent&&short)fbT=setTimeout(()=>{if(pc===vpc&&pc.connectionState!=="connected")toRelay().then(ok=>{if(!ok&&pc===vpc)say("#vmsg","Still trying to connect…")})},9000);
     if(sent)say("#vmsg",fb?"Joined. Connecting… (if a direct link isn't possible, this switches to mobile data mode by itself)":"Joined. Connecting to the host…","ok");
     else{say("#vmsg","Joined. Now send your reply code to the host.","ok");$("#rep").scrollIntoView({behavior:"smooth",block:"center"})}
   }catch(e){say("#vmsg","Couldn't join. Reload the page and try again.","err")}
@@ -1758,6 +1767,108 @@ window.vSeeRemote={open,close,toggle:()=>ob.click(),send:sendIRCommand};
 })();
 </script>
 <script>
+/* Minimal QR code encoder (byte mode, error correction L, versions 1-10). Written for EZTV. */
+function eztvQR(text){
+  const data=Array.from(new TextEncoder().encode(text));
+  // version table for ECC level L: [totalCodewords, eccPerBlock, g1blocks, g1data, g2blocks, g2data]
+  const T=[null,[26,7,1,19,0,0],[44,10,1,34,0,0],[70,15,1,55,0,0],[100,20,1,80,0,0],[134,26,1,108,0,0],[172,18,2,68,0,0],[196,20,2,78,0,0],[242,24,2,97,0,0],[292,30,2,116,0,0],[346,18,2,68,2,69]];
+  const AL=[null,[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50]];
+  let ver=0;
+  for(let v=1;v<=10;v++){const t=T[v],dc=t[2]*t[3]+t[4]*t[5],over=v<10?2:3;if(data.length<=dc-over){ver=v;break}}
+  if(!ver)return null;
+  const t=T[ver],dataCw=t[2]*t[3]+t[4]*t[5],size=17+4*ver;
+  // bit stream
+  const bits=[];const put=(v,n)=>{for(let i=n-1;i>=0;i--)bits.push((v>>i)&1)};
+  put(4,4);put(data.length,ver<10?8:16);data.forEach(b=>put(b,8));
+  for(let i=0;i<4&&bits.length<dataCw*8;i++)bits.push(0);
+  while(bits.length%8)bits.push(0);
+  const cw=[];for(let i=0;i<bits.length;i+=8){let v=0;for(let j=0;j<8;j++)v=(v<<1)|bits[i+j];cw.push(v)}
+  for(let p=0;cw.length<dataCw;p++)cw.push(p%2?0x11:0xEC);
+  // Reed-Solomon
+  const exp=new Array(512),log=new Array(256);
+  for(let i=0,x=1;i<255;i++){exp[i]=x;log[x]=i;x<<=1;if(x&256)x^=0x11D}
+  for(let i=255;i<512;i++)exp[i]=exp[i-255];
+  const mul=(a,b)=>a&&b?exp[log[a]+log[b]]:0;
+  const gen=n=>{let g=[1];for(let i=0;i<n;i++){const ng=new Array(g.length+1).fill(0);for(let j=0;j<g.length;j++){ng[j]^=g[j];ng[j+1]^=mul(g[j],exp[i])}g=ng}return g};
+  const rs=(d,n)=>{const g=gen(n),r=new Array(n).fill(0);for(const b of d){const f=b^r[0];r.shift();r.push(0);if(f)for(let i=0;i<n;i++)r[i]^=mul(g[i+1],f)}return r};
+  const blocks=[];let pos=0;
+  for(let i=0;i<t[2];i++){blocks.push(cw.slice(pos,pos+t[3]));pos+=t[3]}
+  for(let i=0;i<t[4];i++){blocks.push(cw.slice(pos,pos+t[5]));pos+=t[5]}
+  const ecs=blocks.map(b=>rs(b,t[1])),fin=[];
+  const maxd=Math.max(t[3],t[5]);
+  for(let i=0;i<maxd;i++)blocks.forEach(b=>{if(i<b.length)fin.push(b[i])});
+  for(let i=0;i<t[1];i++)ecs.forEach(e=>fin.push(e[i]));
+  // matrix
+  const M=Array.from({length:size},()=>new Array(size).fill(null)),F=Array.from({length:size},()=>new Array(size).fill(false));
+  const setF=(r,c,v)=>{if(r<0||c<0||r>=size||c>=size)return;M[r][c]=v;F[r][c]=true};
+  const finder=(r0,c0)=>{for(let r=-1;r<=7;r++)for(let c=-1;c<=7;c++){const on=(r>=0&&r<=6&&(c===0||c===6))||(c>=0&&c<=6&&(r===0||r===6))||(r>=2&&r<=4&&c>=2&&c<=4);setF(r0+r,c0+c,on)}};
+  finder(0,0);finder(0,size-7);finder(size-7,0);
+  for(let i=8;i<size-8;i++){setF(6,i,i%2===0);setF(i,6,i%2===0)}
+  const al=AL[ver];
+  al.forEach(r=>al.forEach(c=>{if((r===6&&c===6)||(r===6&&c===al[al.length-1])||(c===6&&r===al[al.length-1]))return;
+    for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++)setF(r+dr,c+dc,Math.max(Math.abs(dr),Math.abs(dc))!==1)}));
+  setF(size-8,8,true);
+  for(let i=0;i<9;i++){if(!F[8][i])setF(8,i,false);if(!F[i][8])setF(i,8,false)}
+  for(let i=0;i<8;i++){if(!F[8][size-1-i])setF(8,size-1-i,false);if(!F[size-1-i][8])setF(size-1-i,8,false)}
+  if(ver>=7)for(let i=0;i<6;i++)for(let j=0;j<3;j++){setF(i,size-11+j,false);setF(size-11+j,i,false)}
+  // data placement
+  const dbits=[];fin.forEach(b=>{for(let i=7;i>=0;i--)dbits.push((b>>i)&1)});
+  const place=mask=>{
+    const m=M.map(r=>r.slice());let bi=0,up=true;
+    for(let c=size-1;c>0;c-=2){
+      if(c===6)c--;
+      for(let k=0;k<size;k++){
+        const r=up?size-1-k:k;
+        for(let d=0;d<2;d++){
+          const cc=c-d;if(F[r][cc])continue;
+          let v=bi<dbits.length?dbits[bi]:0;bi++;
+          const mk=[(r+cc)%2===0,r%2===0,cc%3===0,(r+cc)%3===0,(Math.floor(r/2)+Math.floor(cc/3))%2===0,(r*cc)%2+(r*cc)%3===0,((r*cc)%2+(r*cc)%3)%2===0,((r+cc)%2+(r*cc)%3)%2===0][mask];
+          m[r][cc]=!!(v^(mk?1:0));
+        }
+      }
+      up=!up;
+    }
+    // format info (ECC L = 01)
+    const fd=(1<<3)|mask;let f=fd<<10;
+    for(let i=14;i>=10;i--)if((f>>i)&1)f^=0x537<<(i-10);
+    const fmt=((fd<<10)|f)^0x5412,bit=i=>((fmt>>i)&1)===1;
+    for(let i=0;i<=5;i++)m[i][8]=bit(i);m[7][8]=bit(6);m[8][8]=bit(7);m[8][7]=bit(8);
+    for(let i=9;i<15;i++)m[8][14-i]=bit(i);
+    for(let i=0;i<8;i++)m[8][size-1-i]=bit(i);
+    for(let i=8;i<15;i++)m[size-15+i][8]=bit(i);
+    m[size-8][8]=true;
+    if(ver>=7){let v=ver<<12,r=v;for(let i=17;i>=12;i--)if((r>>i)&1)r^=0x1F25<<(i-12);const vi=(ver<<12)|r;
+      for(let i=0;i<18;i++){const b=((vi>>i)&1)===1,a=Math.floor(i/3),c=i%3+size-11;m[a][c]=b;m[c][a]=b}}
+    return m;
+  };
+  const penalty=m=>{
+    let p=0;
+    for(let r=0;r<size;r++){for(const get of [(i)=>m[r][i],(i)=>m[i][r]]){let run=1;for(let i=1;i<size;i++){if(get(i)===get(i-1))run++;else{if(run>=5)p+=run-2;run=1}}if(run>=5)p+=run-2}}
+    for(let r=0;r<size-1;r++)for(let c=0;c<size-1;c++){const v=m[r][c];if(v===m[r][c+1]&&v===m[r+1][c]&&v===m[r+1][c+1])p+=3}
+    const pat=[1,0,1,1,1,0,1,0,0,0,0],pat2=pat.slice().reverse();
+    for(let r=0;r<size;r++)for(let c=0;c<=size-11;c++){
+      let a=true,b=true,a2=true,b2=true;
+      for(let k=0;k<11;k++){const x=m[r][c+k]?1:0,y=m[c+k][r]?1:0;if(x!==pat[k])a=false;if(x!==pat2[k])a2=false;if(y!==pat[k])b=false;if(y!==pat2[k])b2=false}
+      if(a||a2)p+=40;if(b||b2)p+=40;
+    }
+    let dark=0;for(let r=0;r<size;r++)for(let c=0;c<size;c++)if(m[r][c])dark++;
+    p+=Math.floor(Math.abs(dark*100/(size*size)-50)/5)*10;
+    return p;
+  };
+  let best=null,bp=1e9;
+  for(let k=0;k<8;k++){const m=place(k),p=penalty(m);if(p<bp){bp=p;best=m}}
+  return best;
+}
+function eztvQRDraw(canvas,text,scale){
+  const m=eztvQR(text);if(!m)return false;
+  const n=m.length,q=4,s=scale||6;canvas.width=canvas.height=(n+2*q)*s;
+  const x=canvas.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,canvas.width,canvas.height);x.fillStyle="#000";
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(m[r][c])x.fillRect((c+q)*s,(r+q)*s,s,s);
+  return true;
+}
+
+</script>
+<script>
 /* ============ FREE MOBILE-DATA VIEWING (no install): the host page sends picture + sound, end-to-end encrypted,
    through a free public MQTT relay; phones open a private link. The relay never sees the picture. ============ */
 (function(){
@@ -1766,12 +1877,13 @@ const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const enc=new TextEncoder(),dec=new TextDecoder();
 const B64=b=>{let s="";new Uint8Array(b).forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")};
 const UB64=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return Uint8Array.from(atob(s),c=>c.charCodeAt(0))};
-const BROKERS=["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081/"];
+const BROKERS=["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081/","wss://public:public@public.cloud.shiftr.io"];
 const cat=(a,b)=>{const c=new Uint8Array(a.length+b.length);c.set(a);c.set(b,a.length);return c};
 
 /* ---------- tiny MQTT 3.1.1 client over WebSocket ---------- */
 function MQ(url){
   const me={ws:null,open:false,subs:new Map(),onclose:null};
+  let user="",pass="";const um=url.match(/^(wss?:\/\/)([^:@\/]+):([^@\/]*)@(.*)$/);if(um){user=um[2];pass=um[3];url=um[1]+um[4]}
   let buf=new Uint8Array(0),ping=0;
   const str=s=>{const b=enc.encode(s);return cat(new Uint8Array([b.length>>8,b.length&255]),b)};
   const rl=n=>{const o=[];do{let d=n%128;n=Math.floor(n/128);if(n>0)d|=128;o.push(d)}while(n>0);return new Uint8Array(o)};
@@ -1784,7 +1896,7 @@ function MQ(url){
     ws.onclose=()=>{const was=me.open;me.open=false;clearInterval(ping);if(!done)fail();else if(was&&me.onclose)me.onclose()};
     ws.onopen=()=>{
       const id="eztv"+Math.random().toString(36).slice(2,10);
-      ws.send(pkt(0x10,cat(cat(str("MQTT"),new Uint8Array([4,2,0,30])),str(id))));
+      ws.send(pkt(0x10,cat(cat(cat(str("MQTT"),new Uint8Array([4,user?0xC2:2,0,30])),str(id)),user?cat(str(user),str(pass)):new Uint8Array(0))));
     };
     ws.onmessage=e=>{
       buf=cat(buf,new Uint8Array(e.data));
@@ -1894,10 +2006,34 @@ function attach(mq){
     onCmd({dc:{send:async t=>{if(RL.mq&&RL.mq.open)RL.mq.pub(topic("a"),await seal(RL.key,enc.encode(t)))}}},JSON.stringify({c:o.c,s:o.s}));
   });
 }
+const hostOf=u=>{try{return new URL(u.replace(/^(wss?:\/\/)[^@\/]*@/,"$1")).hostname}catch{return u}};
+async function selfTest(mq){                                   // does this server really pass a picture-sized message back to us?
+  const t="eztvrelay/test-"+rnd(10);let got=false;
+  mq.sub(t,()=>{got=true});await sleep(300);
+  mq.pub(t,crypto.getRandomValues(new Uint8Array(40000)));
+  for(let i=0;i<12&&!got;i++)await sleep(250);
+  mq.subs.delete(t);return got;
+}
+async function diagnose(el){
+  const lines=[],show=()=>{el.textContent=lines.join("\n")};
+  lines.push("Checking… (about 20 seconds)");show();
+  const out=[];let good=0;
+  try{const r=await fetch((store.get("sigUrl")||"https://ntfy.sh/")+"eztv-check/json?poll=1",{cache:"no-store"});out.push("Invite service: "+(r.ok?"OK":"error "+r.status))}catch{out.push("Invite service: NOT reachable (the short invite code can't work)")}
+  lines.length=0;lines.push(...out,"Testing relay servers…");show();
+  const list=(store.get("mqUrl")||"").trim()?[(store.get("mqUrl")||"").trim()]:BROKERS;
+  for(const u of list){
+    const t0=performance.now();let msg;
+    try{const mq=MQ(u);await mq.connect(7000);const ct=((performance.now()-t0)/1000).toFixed(1);const ok=await selfTest(mq);mq.close();
+      msg=ok?"works ("+ct+" s)":"connects but blocks picture-sized messages";if(ok)good++}
+    catch{msg="can't connect from here"}
+    out.push("Relay "+hostOf(u)+": "+msg);lines.length=0;lines.push(...out,"Testing relay servers…");show();
+  }
+  lines.length=0;lines.push(...out,"",good?"Result: mobile data mode should work from this device.":"Result: no relay server is reachable from this network. Mobile data mode can't work from here. Try a different network, or send these lines to Claude.");show();
+}
 async function connectAny(preferTag){
   const custom=(store.get("mqUrl")||"").trim();
   const list=preferTag?[[brokerFor(preferTag),preferTag]]:custom?[[custom,"x"+B64(enc.encode(custom))]]:BROKERS.map((u,i)=>[u,String(i)]);
-  for(const [u,tag] of list){try{const mq=MQ(u);await mq.connect();return{mq,tag}}catch{}}
+  for(const [u,tag] of list){try{const mq=MQ(u);await mq.connect();if(preferTag||await selfTest(mq))return{mq,tag};mq.close()}catch{}}
   throw new Error("none");
 }
 async function reconnect(gen){
@@ -1909,10 +2045,11 @@ async function reconnect(gen){
 function showLink(){
   const base=(store.get("publicUrl")||"").trim()||location.href.split("#")[0];
   $("#rlLink").value=base+"#m="+RL.id+"."+B64(RL.raw)+"."+RL.tag;
+  try{$("#rlQr").hidden=!eztvQRDraw($("#rlQr"),$("#rlLink").value,6)}catch{}
   $("#rlBox").hidden=false;$("#rlGo").hidden=true;$("#rlOff").hidden=false;$("#rlShare").hidden=!navigator.share;
 }
 async function relayOn(){
-  if(RL.on)return;
+  if(RL.on||RL.busy)return;RL.busy=true;
   if(!window.crypto||!crypto.subtle){say("#rlMsg","This needs a secure page (https). Open EZTV from your https link.","err");return}
   $("#rlGo").disabled=true;say("#rlMsg","Connecting to the free relay…");
   try{
@@ -1926,7 +2063,7 @@ async function relayOn(){
     attach(mq);showLink();videoLoop(gen);metaLoop(gen);
     say("#rlMsg",/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&!(store.get("publicUrl")||"").trim()?"On, but this link starts with localhost. Open EZTV from your public https link (or add it in Settings) so the link opens on your phone.":"On. Send the link to your phone. It works on Wi-Fi and mobile data.",/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&!(store.get("publicUrl")||"").trim()?"err":"ok");
   }catch{say("#rlMsg","Couldn't reach a free relay server. Check your internet and try again. (Advanced: you can set your own server in Settings.)","err")}
-  finally{$("#rlGo").disabled=false}
+  finally{$("#rlGo").disabled=false;RL.busy=false}
 }
 function relayOff(){
   RL.on=false;RL.gen++;try{RL.mq&&RL.mq.close()}catch{}RL.mq=null;store.set("mqRoom","");
@@ -1935,13 +2072,24 @@ function relayOff(){
 }
 if($("#rlGo")){
   $("#rlGo").onclick=relayOn;$("#rlOff").onclick=relayOff;
+  $("#rlDiag").onclick=async()=>{const b=$("#rlDiag");b.disabled=true;try{await diagnose($("#rlDiagOut"))}finally{b.disabled=false}};
   $("#rlCopy").onclick=()=>copyText($("#rlLink").value);
   $("#rlShare").onclick=()=>shareText("Watch EZTV","Open this link to watch:",$("#rlLink").value);
   if(store.get("mqRoom"))relayOn();                              // it was on before a reload: keep the same link working
 }
 
 /* ======================= VIEWER (opened from the private link) ======================= */
-window.EZRelay={ensure:async()=>{if(!RL.on)await relayOn();return RL.on?RL.id+"."+B64(RL.raw)+"."+RL.tag:""}};
+let inflight=null;
+window.EZRelay={ensure:()=>{
+  const spec=()=>RL.on?RL.id+"."+B64(RL.raw)+"."+RL.tag:"";
+  if(RL.on)return Promise.resolve(spec());
+  if(!inflight)inflight=relayOn().then(()=>spec()).finally(()=>{inflight=null});
+  return inflight;
+}};
+setInterval(()=>{
+  const el=$("#relayState");if(!el)return;
+  el.textContent=RL.on&&RL.mq&&RL.mq.open?"Mobile data mode: ready":RL.busy?"Mobile data mode: connecting…":"Mobile data mode: not available (tap Check connection in step 5)";
+},1000);
 function startViewer(id,k,tag){
   if($("#rv"))return;
   const url=brokerFor(tag),pre="eztvrelay/"+id+"/";
