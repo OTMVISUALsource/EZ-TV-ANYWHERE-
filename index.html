@@ -463,7 +463,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <li>For a webhook: on https, a plain <code>http://</code> address on your network is blocked by browsers. Use the Bridge instead, or open EZTV from <code>http://localhost:8787</code> while the Bridge is running.</li></ul></div></details>
 </section>
 </main>
-<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 7 · smoother sound + faster remote</span></footer>
+<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 8 · low-delay remote</span></footer>
 </div>
 
 <dialog id="settings">
@@ -1944,7 +1944,21 @@ const brokerFor=tag=>tag&&tag[0]==="x"?dec.decode(UB64(tag.slice(1))):BROKERS[+t
 const RL={on:false,v:{},t0:0,mq:null,key:null,id:"",raw:null,tag:"",viewers:new Map(),seen:new Set(),gen:0};
 const vCount=sid=>{const n=Date.now();let c=0;RL.viewers.forEach(x=>{if(n-x.t<6000&&x.s===sid)c++});return c};
 const topic=k=>"eztvrelay/"+RL.id+"/"+k;
-const qual=()=>{const b=+(store.get("bitrate","5000000"));return b<=2e6?{w:640,fps:10,q:.5}:b>=1e7?{w:1280,fps:20,q:.7}:{w:854,fps:15,q:.6}};
+const qual=()=>{
+  const b=+(store.get("bitrate","5000000")),Q=b<=2e6?{w:640,fps:10,q:.5}:b>=1e7?{w:1280,fps:20,q:.7}:{w:854,fps:15,q:.6},L=RL.lvl||0;
+  if(L===1)return{w:Math.min(Q.w,720),fps:Math.min(Q.fps,12),q:Math.min(Q.q,.5)};
+  if(L===2)return{w:Math.min(Q.w,560),fps:Math.min(Q.fps,9),q:.42};
+  if(L>=3)return{w:Math.min(Q.w,426),fps:7,q:.38};
+  return Q;
+};
+/* if a phone reports the picture arriving late, send a lighter picture so nothing piles up (and back up slowly when it's smooth) */
+function adapt(){
+  const n=Date.now();let late=0;RL.viewers.forEach(x=>{if(n-x.t<6000)late=Math.max(late,x.late||0)});
+  RL.lvl=RL.lvl||0;
+  if(late>=3&&n-(RL.lvlT||0)>2500){RL.lvl=Math.min(3,RL.lvl+1);RL.lvlT=n;RL.calm=n}
+  else if(late>=1)RL.calm=n;
+  else if(RL.lvl>0&&n-(RL.calm||0)>12000){RL.lvl--;RL.calm=n}
+}
 async function pubFrame(sid,type,ts,pl){
   if(!RL.on||!RL.mq||!RL.mq.open)return;
   RL.mq.pub(topic("s"+sid),await seal(RL.key,frame(type,ts,pl)));
@@ -2023,16 +2037,31 @@ async function metaLoop(gen){
 function attach(mq){
   mq.sub(topic("p"),async b=>{
     const p=await unseal(RL.key,b);if(!p)return;
-    try{const o=JSON.parse(dec.decode(p));if(typeof o.vid==="string"&&Number.isInteger(o.s))RL.viewers.set(o.vid.slice(0,16),{s:o.s,t:Date.now()})}catch{}
+    try{const o=JSON.parse(dec.decode(p));if(typeof o.vid==="string"&&Number.isInteger(o.s))RL.viewers.set(o.vid.slice(0,16),{s:o.s,t:Date.now(),late:+o.late||0});adapt()}catch{}
   });
-  mq.sub(topic("c"),async b=>{
+}
+function ctlHandler(){
+  return async b=>{
     const key=B64(b.subarray(0,12));if(RL.seen.has(key))return;
     const p=await unseal(RL.key,b);if(!p)return;
     let o;try{o=JSON.parse(dec.decode(p))}catch{return}
     if(!o||Math.abs(Date.now()-(+o.t||0))>20000)return;
     RL.seen.add(key);if(RL.seen.size>200)RL.seen.delete(RL.seen.values().next().value);
-    onCmd({dc:{send:async t=>{if(RL.mq&&RL.mq.open)RL.mq.pub(topic("a"),await seal(RL.key,enc.encode(t)))}}},JSON.stringify({c:o.c,s:o.s}));
-  });
+    onCmd({dc:{send:async t=>{const q=RL.cq&&RL.cq.open?RL.cq:RL.mq;if(q&&q.open)q.pub(topic("a"),await seal(RL.key,enc.encode(t)))}}},JSON.stringify({c:o.c,s:o.s}));
+  };
+}
+/* commands and replies get their own connection, so a busy picture never makes them wait */
+async function ctlLoop(gen){
+  while(RL.on&&gen===RL.gen){
+    try{
+      const mq=MQ(brokerFor(RL.tag));await mq.connect();
+      if(!RL.on||gen!==RL.gen){mq.close();return}
+      RL.cq=mq;mq.sub(topic("c"),ctlHandler());
+      await new Promise(r=>{mq.onclose=r});
+    }catch{}
+    RL.cq=null;await sleep(1000);
+  }
+  try{RL.cq&&RL.cq.close()}catch{}RL.cq=null;
 }
 const hostOf=u=>{try{return new URL(u.replace(/^(wss?:\/\/)[^@\/]*@/,"$1")).hostname}catch{return u}};
 async function selfTest(mq){                                   // does this server really pass a picture-sized message back to us?
@@ -2088,13 +2117,13 @@ async function relayOn(){
     RL.mq=mq;RL.tag=tag;store.set("mqRoom",RL.id+"."+B64(RL.raw)+"."+tag);
     RL.on=true;RL.t0=performance.now();RL.v={};RL.viewers.clear();const gen=++RL.gen;
     mq.onclose=()=>{if(RL.on){say("#rlMsg","Connection lost. Reconnecting…","err");reconnect(gen)}};
-    attach(mq);showLink();videoLoop(gen);metaLoop(gen);
+    attach(mq);showLink();videoLoop(gen);metaLoop(gen);ctlLoop(gen);
     say("#rlMsg",/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&!(store.get("publicUrl")||"").trim()?"On, but this link starts with localhost. Open EZTV from your public https link (or add it in Settings) so the link opens on your phone.":"On. Send the link to your phone. It works on Wi-Fi and mobile data.",/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&!(store.get("publicUrl")||"").trim()?"err":"ok");
   }catch{say("#rlMsg","Couldn't reach a free relay server. Check your internet and try again. (Advanced: you can set your own server in Settings.)","err")}
   finally{$("#rlGo").disabled=false;RL.busy=false}
 }
 function relayOff(){
-  RL.on=false;RL.gen++;try{RL.mq&&RL.mq.close()}catch{}RL.mq=null;store.set("mqRoom","");
+  RL.on=false;RL.gen++;try{RL.mq&&RL.mq.close()}catch{}try{RL.cq&&RL.cq.close()}catch{}RL.mq=null;RL.cq=null;store.set("mqRoom","");
   $("#rlBox").hidden=true;$("#rlGo").hidden=false;$("#rlOff").hidden=true;
   say("#rlMsg","Turned off. The old link no longer works.");
 }
@@ -2139,11 +2168,12 @@ function startViewer(id,k,tag){
   <div class="rvst" id="rvSt">Ready</div><button class="btn primary rvgo" id="rvGo" type="button">Tap to watch</button>`;
   document.body.append(el);document.documentElement.style.overflow="hidden";
   const cv=el.querySelector("canvas"),cx=cv.getContext("2d",{alpha:false}),st=t=>{$("#rvSt").textContent=t||""};
-  const RV={on:false,s:1,anchor:null,frames:[],ac:null,gain:null,sound:true,D:600,lastFrame:0,idleT:0,mq:null,key:null,vid:rnd(8)};
+  const RV={late:[],on:false,s:1,anchor:null,frames:[],ac:null,gain:null,sound:true,D:600,lastFrame:0,idleT:0,mq:null,key:null,vid:rnd(8)};
 
   const playAt=ts=>{const n=performance.now();if(!RV.anchor)RV.anchor={ts,wall:n+RV.D,ctx:RV.ac?RV.ac.currentTime+RV.D/1000:0};return RV.anchor.wall+(ts-RV.anchor.ts)};
   function video(ts,pl){
     let w=playAt(ts);const n=performance.now();
+    if(w<n+80)RV.late.push(n);
     if(w<n-400||w>n+6000){if(w<n-400)RV.D=Math.min(1800,RV.D+250);RV.anchor=null;RV.frames.length=0;AU.next=0;w=playAt(ts)}
     createImageBitmap(new Blob([pl],{type:"image/jpeg"})).then(b=>{
       let i=RV.frames.length;while(i>0&&RV.frames[i-1].w>w)i--;RV.frames.splice(i,0,{w,b});
@@ -2169,7 +2199,8 @@ function startViewer(id,k,tag){
   }
   function draw(){
     if(!RV.on)return;requestAnimationFrame(draw);
-    const now=performance.now();let pick=null;
+    const now=performance.now();
+    if(now-(RV.dT||0)>6000){RV.dT=now;if(RV.D>350&&!RV.late.some(t=>now-t<6000))RV.D-=50}let pick=null;
     while(RV.frames.length&&RV.frames[0].w<=now){if(pick&&pick.b.close)pick.b.close();pick=RV.frames.shift()}
     if(pick){
       if(cv.width!==pick.b.width||cv.height!==pick.b.height){cv.width=pick.b.width;cv.height=pick.b.height}
@@ -2200,7 +2231,7 @@ function startViewer(id,k,tag){
     if(RV.mq&&RV.mq.open)RV.mq.sub(pre+"s"+n,onData);
     presence();
   }
-  async function presence(){if(RV.mq&&RV.mq.open)RV.mq.pub(pre+"p",await seal(RV.key,enc.encode(JSON.stringify({vid:RV.vid,s:RV.s}))))}
+  async function presence(){if(RV.mq&&RV.mq.open)RV.mq.pub(pre+"p",await seal(RV.key,enc.encode(JSON.stringify({vid:RV.vid,s:RV.s,late:(()=>{const n=performance.now();RV.late=RV.late.filter(t=>n-t<4000);return RV.late.length})()}))))}
   async function link(){
     let tries=0;
     while(RV.on){
@@ -2208,7 +2239,6 @@ function startViewer(id,k,tag){
         const mq=MQ(url);await mq.connect();RV.mq=mq;tries=0;
         mq.onclose=()=>{st("Reconnecting…");setTimeout(link,400)};
         mq.sub(pre+"m",async b=>{const p=await unseal(RV.key,b);if(p)try{chips(JSON.parse(dec.decode(p)))}catch{}});
-        mq.sub(pre+"a",async b=>{const p=await unseal(RV.key,b);if(p&&window.onMsg)window.onMsg({data:dec.decode(p)})});
         mq.sub(pre+"s"+RV.s,onData);
         presence();
         if(!RV.lastFrame)st("Connected. Waiting for the picture…");else st("");
@@ -2217,6 +2247,16 @@ function startViewer(id,k,tag){
     }
   }
   document.addEventListener("visibilitychange",()=>{if(!document.hidden&&RV.on&&(!RV.mq||!RV.mq.open||Date.now()-RV.mq.rx>15000)){try{RV.mq&&RV.mq.ws.close()}catch{}}});
+  async function ctl(){
+    while(RV.on){
+      try{
+        const mq=MQ(url);await mq.connect();RV.cq=mq;
+        mq.sub(pre+"a",async b=>{const p=await unseal(RV.key,b);if(p&&window.onMsg)window.onMsg({data:dec.decode(p)})});
+        await new Promise(r=>{mq.onclose=r});
+      }catch{}
+      RV.cq=null;await sleep(800);
+    }
+  }
   function idle(){clearTimeout(RV.idleT);el.classList.remove("idle");RV.idleT=setTimeout(()=>{if(RV.on)el.classList.add("idle")},4500)}
   el.addEventListener("pointerdown",idle,{passive:true});
   $("#rvGo").onclick=async()=>{
@@ -2227,10 +2267,10 @@ function startViewer(id,k,tag){
       const b=RV.ac.createBuffer(1,1,22050),s=RV.ac.createBufferSource();s.buffer=b;s.connect(RV.ac.destination);s.start(0);   // unlock iOS audio
     }catch{RV.ac=null;$("#rvSnd").hidden=true}
     try{RV.key=await mkKey(UB64(k))}catch{st("This link is not valid. Ask for a new one.");return}
-    RV.on=true;draw();idle();link();
+    RV.on=true;draw();idle();link();ctl();
     setInterval(presence,2000);
     /* the remote: commands go to the host, which owns the bridge */
-    vdc={get readyState(){return RV.mq&&RV.mq.open?"open":"closed"},send:async m=>{const o=JSON.parse(m);o.t=Date.now();RV.mq.pub(pre+"c",await seal(RV.key,enc.encode(JSON.stringify(o))))}};
+    vdc={get readyState(){return (RV.cq&&RV.cq.open)||(RV.mq&&RV.mq.open)?"open":"closed"},send:async m=>{const o=JSON.parse(m);o.t=Date.now();const q=RV.cq&&RV.cq.open?RV.cq:RV.mq;q.pub(pre+"c",await seal(RV.key,enc.encode(JSON.stringify(o))))}};
     try{if(navigator.wakeLock)navigator.wakeLock.request("screen").catch(()=>{})}catch{}
   };
   $("#rvSnd").onclick=()=>{RV.sound=!RV.sound;if(RV.gain)RV.gain.gain.value=RV.sound?1:0;$("#rvSnd").textContent="Sound: "+(RV.sound?"on":"off")};
