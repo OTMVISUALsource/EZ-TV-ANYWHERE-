@@ -459,7 +459,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <li>For a webhook: on https, a plain <code>http://</code> address on your network is blocked by browsers. Use the Bridge instead, or open EZTV from <code>http://localhost:8787</code> while the Bridge is running.</li></ul></div></details>
 </section>
 </main>
-<footer>EZTV runs entirely in your browser. No accounts, no uploads.</footer>
+<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 5 · direct + mobile data</span></footer>
 </div>
 
 <dialog id="settings">
@@ -911,7 +911,10 @@ $("#mk").onclick=async()=>{
     const code=await pack(p.pc.localDescription);
     const pub=store.get("publicUrl").trim(),local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname),base=(pub||location.href.split("#")[0]);
     let short="";
-    try{short=newCode();await sigPost(short,"o",code)}catch{short=""}
+    try{
+      short=newCode();await sigPost(short,"o",code);
+      if(window.EZRelay)Promise.race([EZRelay.ensure(),new Promise(r=>setTimeout(()=>r(""),6000))]).then(sp=>{if(sp&&!p.dead)sigPost(short,"r",sp).catch(()=>{})}).catch(()=>{});
+    }catch{short=""}
     if(short){
       p.code=short;$("#codeBig").hidden=false;$("#codeBig").textContent=fmtCode(short);
       $("#off").value=fmtCode(short);$("#offLink").value=base+"#c="+short;
@@ -1007,7 +1010,7 @@ $("#testout").onclick=async()=>{
    ===================================================== */
 const stage=$("#stage"),tilesEl=$("#tiles");
 const tiles=new Map();
-let rx=[],lastList=null,vpc=null,vdc=null,lostT=null,activeId=null,layout=store.get("layout","grid"),fit=store.get("fit","contain"),soundOn=false,idleT=null;
+let fbT=0,rx=[],lastList=null,vpc=null,vdc=null,lostT=null,activeId=null,layout=store.get("layout","grid"),fit=store.get("fit","contain"),soundOn=false,idleT=null;
 
 function vReset(keepMsg){
   clearTimeout(lostT);
@@ -1160,12 +1163,12 @@ $("#bar").addEventListener("click",async e=>{
 /* ----- joining ----- */
 function vstate(txt,on){$("#vchip").textContent=txt;$("#connected").querySelector(".dot").classList.toggle("on",!!on)}
 async function join(){
-  let txt=$("#inv").value.trim(),short="";
+  let txt=$("#inv").value.trim(),short="",fb="";
   if(!txt){say("#vmsg","Type the invite code from the host first.","err");return}
   const cm=txt.match(/[#&?]c=([A-Za-z0-9-]+)/);if(cm)txt=cm[1];
   if(CODE_RE.test(txt)){
     short=txt.replace("-","").toUpperCase();$("#joinb").disabled=true;say("#vmsg","Finding your host…");
-    const o=await sigGet(short,"o");$("#joinb").disabled=false;
+    const [o,rs]=await Promise.all([sigGet(short,"o"),sigGet(short,"r",1)]);$("#joinb").disabled=false;if(/^[a-z0-9]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(rs||""))fb=rs;
     if(!o){say("#vmsg","Couldn't find that code. Check it, or ask the host for a new one.","err");return}
     txt=o;
   }
@@ -1185,6 +1188,12 @@ async function join(){
       vdc.onopen=()=>say("#cmsg","Remote ready.","ok");
       vdc.onmessage=onMsg;
     };
+    const toRelay=()=>{
+      if(!fb||pc!==vpc||!window.EZRelayViewer)return false;
+      clearTimeout(fbT);vReset(true);$("#joinb").disabled=false;
+      say("#vmsg","Switching to mobile data mode…","ok");window.EZRelayViewer.start(fb);return true;
+    };
+    clearTimeout(fbT);
     const lost=()=>{
       if(pc!==vpc)return;
       vReset(true);$("#joinb").disabled=false;
@@ -1192,13 +1201,13 @@ async function join(){
     };
     pc.onconnectionstatechange=()=>{
       if(pc!==vpc)return;
-      const s=pc.connectionState;clearTimeout(lostT);
+      const s=pc.connectionState;clearTimeout(lostT);if(s==="connected")clearTimeout(fbT);
       if(s==="connected"){
         vstate("Connected",true);$("#hero").hidden=true;$("#connected").hidden=false;stage.hidden=false;
         renderTiles();tiles.forEach(t=>t.video.play().catch(()=>{}));toast("Connected");
       }else if(s==="connecting"){vstate("Connecting…",false)}
       else if(s==="disconnected"){vstate("Reconnecting…",false);lostT=setTimeout(()=>{if(pc===vpc&&pc.connectionState!=="connected")lost()},10000)}
-      else if(s==="failed"){vReset(true);$("#joinb").disabled=false;say("#vmsg","Couldn't connect. Try Wi-Fi, a VPN to your home network, or a TURN server. Then ask the host for a fresh invite.","err");turnBtn("#vmsg")}
+      else if(s==="failed"){if(toRelay())return;vReset(true);$("#joinb").disabled=false;say("#vmsg","Couldn't connect. Try Wi-Fi, a VPN to your home network, or a TURN server. Then ask the host for a fresh invite.","err");turnBtn("#vmsg")}
       else if(s==="closed")lost();
     };
     await pc.setRemoteDescription(offer);
@@ -1207,7 +1216,8 @@ async function join(){
     const rep=await pack(pc.localDescription);$("#rep").value=rep;
     $("#cprep").disabled=false;$("#shrep").hidden=!canShare;$("#v2").classList.add("done");
     let sent=false;if(short){try{await sigPost(short,"a",rep);sent=true}catch{}}
-    if(sent)say("#vmsg","Joined. Connecting to the host…","ok");
+    if(sent&&fb)fbT=setTimeout(()=>{if(pc===vpc&&pc.connectionState!=="connected")toRelay()},9000);
+    if(sent)say("#vmsg",fb?"Joined. Connecting… (if a direct link isn't possible, this switches to mobile data mode by itself)":"Joined. Connecting to the host…","ok");
     else{say("#vmsg","Joined. Now send your reply code to the host.","ok");$("#rep").scrollIntoView({behavior:"smooth",block:"center"})}
   }catch(e){say("#vmsg","Couldn't join. Reload the page and try again.","err")}
   $("#joinb").disabled=false;
@@ -1931,9 +1941,10 @@ if($("#rlGo")){
 }
 
 /* ======================= VIEWER (opened from the private link) ======================= */
-const hm=location.hash.match(/[#&]m=([a-z0-9]+)\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/);
-if(hm){
-  const [,id,k,tag]=hm,url=brokerFor(tag),pre="eztvrelay/"+id+"/";
+window.EZRelay={ensure:async()=>{if(!RL.on)await relayOn();return RL.on?RL.id+"."+B64(RL.raw)+"."+RL.tag:""}};
+function startViewer(id,k,tag){
+  if($("#rv"))return;
+  const url=brokerFor(tag),pre="eztvrelay/"+id+"/";
   window.__mqv={screen:1};
   const css=document.createElement("style");
   css.textContent=`#rv{position:fixed;inset:0;z-index:600;background:#04051a;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:manipulation}
@@ -2043,6 +2054,9 @@ if(hm){
   if(document.fullscreenEnabled){$("#rvFs").hidden=false;$("#rvFs").onclick=()=>{document.fullscreenElement?document.exitFullscreen():el.requestFullscreen().catch(()=>{})}}
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){if(RV.ac&&RV.ac.state!=="running")RV.ac.resume().catch(()=>{});if(RV.on&&(!RV.mq||!RV.mq.open))link()}});
 }
+window.EZRelayViewer={start:spec=>{const m=String(spec).match(/^([a-z0-9]+)\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);if(m)startViewer(m[1],m[2],m[3])}};
+const hm=location.hash.match(/[#&]m=([a-z0-9]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+if(hm)window.EZRelayViewer.start(hm[1]);
 })();
 </script>
 </body>
