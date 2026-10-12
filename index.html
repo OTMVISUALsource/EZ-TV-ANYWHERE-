@@ -453,7 +453,8 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <label class="f">Stream quality (host)
       <select id="bitrate"><option value="2000000">Data saver · 2 Mbps</option><option value="5000000">Balanced · 5 Mbps</option><option value="10000000">High · 10 Mbps</option></select></label>
     <label class="f">Public EZTV link (used in invite links)<input type="url" id="pubUrl" placeholder="https://yourname.github.io/eztv/" spellcheck="false" autocapitalize="off"></label>
-    <p class="hint">Optional TURN server for networks that block direct connections. Set it on both host and viewer.</p>
+    <h3 style="margin:14px 0 4px;font-size:15px">TURN server (fixes "Connection failed")</h3>
+    <p class="hint">Use this when a phone on cellular data, or another network, can't see the stream. Enter the same TURN details on the host and on every viewer device, then make a fresh invite. Separate several URLs with a space or comma, for example <code>turn:host:80 turns:host:443</code>.</p>
     <label class="f">TURN URL<input type="text" id="turnUrl" placeholder="turn:turn.example.com:3478" spellcheck="false" autocapitalize="off"></label>
     <label class="f">Username<input type="text" id="turnUser" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
     <label class="f">Password<input type="password" id="turnPass" autocomplete="off"></label>
@@ -539,11 +540,14 @@ $("#modeHost").onclick=()=>setMode("host");$("#modeView").onclick=()=>setMode("v
 $("#how").open=store.get("howClosed")!=="1";
 $("#how").addEventListener("toggle",()=>store.set("howClosed",$("#how").open?"0":"1"));
 $("#openHelp").onclick=()=>$("#helpSec").scrollIntoView({behavior:"smooth"});
-$("#openSet").onclick=()=>{
+function openSettings(focusTurn){
   $("#bitrate").value=store.get("bitrate","5000000");
   $("#pubUrl").value=store.get("publicUrl");$("#turnUrl").value=store.get("turnUrl");$("#turnUser").value=store.get("turnUser");$("#turnPass").value=store.get("turnPass");
   $("#settings").showModal();
-};
+  if(focusTurn){const t=$("#turnUrl");t.scrollIntoView({block:"center"});setTimeout(()=>t.focus(),50)}
+}
+$("#openSet").onclick=()=>openSettings();
+function turnBtn(sel){const el=typeof sel==="string"?$(sel):sel;if(!el)return;const b=document.createElement("button");b.type="button";b.className="btn";b.style.cssText="display:block;margin-top:10px";b.textContent="Open TURN server settings";b.onclick=()=>openSettings(true);el.appendChild(b)}
 $("#setForm").addEventListener("submit",e=>{
   if(e.submitter&&e.submitter.value==="save"){
     store.set("bitrate",$("#bitrate").value);store.set("publicUrl",$("#pubUrl").value.trim());store.set("turnUrl",$("#turnUrl").value);
@@ -819,7 +823,7 @@ $("#mk").onclick=async()=>{
     p.pc.onconnectionstatechange=()=>{
       const st=p.pc.connectionState;
       if(st==="connected"){tuneAll();toast(p.name+" connected");$("#s3").classList.add("done");say("#hmsg",p.name+" is watching.","ok")}
-      if(st==="failed")say("#hmsg","Connection failed. Their network may block direct links. Try Wi-Fi, a VPN, or a TURN server in Settings.","err");
+      if(st==="failed"){say("#hmsg","Connection failed. Their network may block direct links. Try Wi-Fi, a VPN, or a TURN server.","err");turnBtn("#hmsg")}
       renderPeers();
     };
     peers.set(p.id,p);pending=p;renderPeers();
@@ -1099,7 +1103,7 @@ async function join(){
         renderTiles();tiles.forEach(t=>t.video.play().catch(()=>{}));toast("Connected");
       }else if(s==="connecting"){vstate("Connecting…",false)}
       else if(s==="disconnected"){vstate("Reconnecting…",false);lostT=setTimeout(()=>{if(pc===vpc&&pc.connectionState!=="connected")lost()},10000)}
-      else if(s==="failed"){vReset(true);$("#joinb").disabled=false;say("#vmsg","Couldn't connect. Try Wi-Fi, a VPN to your home network, or a TURN server in Settings. Then ask the host for a fresh invite.","err")}
+      else if(s==="failed"){vReset(true);$("#joinb").disabled=false;say("#vmsg","Couldn't connect. Try Wi-Fi, a VPN to your home network, or a TURN server. Then ask the host for a fresh invite.","err");turnBtn("#vmsg")}
       else if(s==="closed")lost();
     };
     await pc.setRemoteDescription(offer);
