@@ -403,6 +403,19 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
         </div></details>
       <div class="row"><button class="btn small" id="testout" type="button">Send test press</button><span class="status grow" id="outmsg" role="status" aria-live="polite">No remote output set up yet.</span></div>
     </div></div>
+
+    <div class="step" id="s5"><div class="num"><span>5</span></div><div class="body">
+      <h3>Watch over mobile data <span class="chip">free</span></h3>
+      <p class="hint">Phones on your Wi-Fi connect directly. To watch from anywhere, including mobile data, turn this on. You get a private link with picture and sound. Nothing to install, and the picture is encrypted so the free relay can't see it. Keep this page open. It uses your home internet upload, so use Data saver in Settings if it stutters.</p>
+      <div class="row"><button class="btn primary" id="rlGo" type="button">Turn on mobile data link</button><button class="btn danger" id="rlOff" type="button" hidden>Turn off</button></div>
+      <div class="status" id="rlMsg" role="status" aria-live="polite"></div>
+      <div id="rlBox" hidden class="stack" style="gap:8px">
+        <label class="f">Private link for your phone<input type="url" id="rlLink" readonly aria-label="Private link"></label>
+        <div class="row"><button class="btn" id="rlCopy" type="button">Copy link</button><button class="btn" id="rlShare" type="button" hidden>Share</button></div>
+        <p class="hint" id="rlWho"></p>
+        <p class="hint">Anyone with this link can watch and use your remote, so only send it to yourself or people you trust. Turn it off when you're done to get a new link next time.</p>
+      </div>
+    </div></div>
   </div>
 </section>
 
@@ -460,8 +473,9 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <label class="f">TURN URL<input type="text" id="turnUrl" placeholder="turn:turn.example.com:3478" spellcheck="false" autocapitalize="off"></label>
     <label class="f">Username<input type="text" id="turnUser" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
     <label class="f">Password<input type="password" id="turnPass" autocomplete="off"></label>
-    <p class="hint">Leave these blank to use the built-in relay.</p>
-    <button class="btn" type="button" id="turnTest">Test TURN server</button>
+    <p class="hint">Optional. Leave blank for direct connections (no relay).</p>
+    <label class="f">Mobile data relay server (advanced, optional)<input type="text" id="mqUrl" placeholder="Leave blank to use the free default" spellcheck="false" autocapitalize="off"></label>
+    <div class="row"><button class="btn" type="button" id="turnTest">Test TURN server</button><button class="btn" type="button" id="turnClr">Clear TURN</button></div>
     <p class="status" id="turnRes" role="status"></p>
     <div class="row"><button class="btn primary" value="save">Save</button><button class="btn" value="cancel">Cancel</button></div>
   </form>
@@ -561,17 +575,15 @@ function sigWatch(c,k,onMsg,stopped){
   })();
   return ()=>ac.abort();
 }
-function iceDone(pc,ms=9000){return new Promise(res=>{
+function iceDone(pc,ms=7000){return new Promise(res=>{
   if(pc.iceGatheringState==="complete")return res();
   const t=setTimeout(res,ms);
   pc.addEventListener("icegatheringstatechange",()=>{if(pc.iceGatheringState==="complete"){clearTimeout(t);res()}});
 })}
-const DEFAULT_TURN={urls:["turn:global.relay.metered.ca:80","turn:global.relay.metered.ca:80?transport=tcp","turn:global.relay.metered.ca:443","turns:global.relay.metered.ca:443?transport=tcp"],username:"8dbe1ebb3d11d0ad8b85bebd",credential:"Ca21PKFINt6Y4Gw/"};
 function rtcConfig(){
   const servers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302","stun:stun.cloudflare.com:3478"]}];
   const u=store.get("turnUrl").trim();
   if(u)servers.push({urls:u.split(/[\s,]+/).filter(Boolean),username:store.get("turnUser"),credential:store.get("turnPass")});
-  else servers.push(DEFAULT_TURN);   // built-in relay so phones on any network can connect; Settings overrides it
   return {iceServers:servers,bundlePolicy:"max-bundle"};
 }
 
@@ -589,15 +601,17 @@ $("#how").addEventListener("toggle",()=>store.set("howClosed",$("#how").open?"0"
 $("#openHelp").onclick=()=>$("#helpSec").scrollIntoView({behavior:"smooth"});
 function openSettings(focusTurn){
   $("#bitrate").value=store.get("bitrate","5000000");
-  $("#pubUrl").value=store.get("publicUrl");$("#turnUrl").value=store.get("turnUrl");$("#turnUser").value=store.get("turnUser");$("#turnPass").value=store.get("turnPass");
+  $("#pubUrl").value=store.get("publicUrl");$("#turnUrl").value=store.get("turnUrl");$("#turnUser").value=store.get("turnUser");$("#turnPass").value=store.get("turnPass");$("#mqUrl").value=store.get("mqUrl");
   $("#settings").showModal();
   if(focusTurn){const t=$("#turnUrl");t.scrollIntoView({block:"center"});setTimeout(()=>t.focus(),50)}
 }
 $("#openSet").onclick=()=>openSettings();
+$("#turnClr").onclick=()=>{["#turnUrl","#turnUser","#turnPass"].forEach(i=>$(i).value="");say("#turnRes","Cleared. Tap Save.")};
 $("#turnTest").onclick=async()=>{
   const b=$("#turnTest");b.disabled=true;say("#turnRes","Testing… (up to 10 s)");
   const u=$("#turnUrl").value.trim();
-  const srv=u?{urls:u.split(/[\s,]+/).filter(Boolean),username:$("#turnUser").value,credential:$("#turnPass").value}:DEFAULT_TURN;
+  if(!u){say("#turnRes","No TURN server entered. Streams connect directly.");b.disabled=false;return}
+  const srv={urls:u.split(/[\s,]+/).filter(Boolean),username:$("#turnUser").value,credential:$("#turnPass").value};
   let pc,ok=false,err="";
   try{
     pc=new RTCPeerConnection({iceServers:[srv],iceTransportPolicy:"relay"});
@@ -615,7 +629,7 @@ function turnBtn(sel){const el=typeof sel==="string"?$(sel):sel;if(!el)return;co
 $("#setForm").addEventListener("submit",e=>{
   if(e.submitter&&e.submitter.value==="save"){
     store.set("bitrate",$("#bitrate").value);store.set("publicUrl",$("#pubUrl").value.trim());store.set("turnUrl",$("#turnUrl").value);
-    store.set("turnUser",$("#turnUser").value);store.set("turnPass",$("#turnPass").value);toast("Settings saved");tuneAll();
+    store.set("turnUser",$("#turnUser").value);store.set("mqUrl",$("#mqUrl").value.trim());store.set("turnPass",$("#turnPass").value);toast("Settings saved");tuneAll();
   }
 });
 
@@ -1326,9 +1340,9 @@ const IRBridge={
   clear(c,s){return this.call(`/clear?c=${enc(wire(c))}&s=${s}&profile=${enc(profile())}`)}
 };
 const pend={};
-const viaHost=()=>{try{return !$("#view").hidden&&!!vdc}catch{return false}};          // viewer phone: the host computer owns the bridge
+const viaHost=()=>{try{return !!window.__mqv||(!$("#view").hidden&&!!vdc)}catch{return false}};          // viewer phone: the host computer owns the bridge
 const hostLinkUp=()=>{try{return !!vdc&&vdc.readyState==="open"}catch{return false}};
-const targetScreen=()=>{try{const t=tiles.get(activeId);if(viaHost()&&t&&Number.isInteger(t.n))return t.n}catch{}return Math.max(1,+LS.g("irScreen",1)||1)};
+const targetScreen=()=>{if(window.__mqv)return window.__mqv.screen||1;try{const t=tiles.get(activeId);if(viaHost()&&t&&Number.isInteger(t.n))return t.n}catch{}return Math.max(1,+LS.g("irScreen",1)||1)};
 async function transport(c){
   const s=targetScreen();
   if(viaHost()){
@@ -1731,6 +1745,304 @@ const endDrag=e=>{if(!drag)return;drag=null;P.classList.remove("drag");if(pos)LS
 H.addEventListener("dblclick",e=>{if(!e.target.closest("button"))$$("#rmMin").click()});
 
 window.vSeeRemote={open,close,toggle:()=>ob.click(),send:sendIRCommand};
+})();
+</script>
+<script>
+/* ============ FREE MOBILE-DATA VIEWING (no install): the host page sends picture + sound, end-to-end encrypted,
+   through a free public MQTT relay; phones open a private link. The relay never sees the picture. ============ */
+(function(){
+"use strict";
+const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const enc=new TextEncoder(),dec=new TextDecoder();
+const B64=b=>{let s="";new Uint8Array(b).forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")};
+const UB64=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return Uint8Array.from(atob(s),c=>c.charCodeAt(0))};
+const BROKERS=["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081/"];
+const cat=(a,b)=>{const c=new Uint8Array(a.length+b.length);c.set(a);c.set(b,a.length);return c};
+
+/* ---------- tiny MQTT 3.1.1 client over WebSocket ---------- */
+function MQ(url){
+  const me={ws:null,open:false,subs:new Map(),onclose:null};
+  let buf=new Uint8Array(0),ping=0;
+  const str=s=>{const b=enc.encode(s);return cat(new Uint8Array([b.length>>8,b.length&255]),b)};
+  const rl=n=>{const o=[];do{let d=n%128;n=Math.floor(n/128);if(n>0)d|=128;o.push(d)}while(n>0);return new Uint8Array(o)};
+  const pkt=(h,body)=>cat(cat(new Uint8Array([h]),rl(body.length)),body);
+  me.connect=(timeout=7000)=>new Promise((res,rej)=>{
+    let done=false;const ws=me.ws=new WebSocket(url,"mqtt");ws.binaryType="arraybuffer";
+    const fail=e=>{if(!done){done=true;clearTimeout(t);try{ws.close()}catch{}rej(e||new Error("fail"))}};
+    const t=setTimeout(()=>fail(new Error("timeout")),timeout);
+    ws.onerror=()=>fail();
+    ws.onclose=()=>{const was=me.open;me.open=false;clearInterval(ping);if(!done)fail();else if(was&&me.onclose)me.onclose()};
+    ws.onopen=()=>{
+      const id="eztv"+Math.random().toString(36).slice(2,10);
+      ws.send(pkt(0x10,cat(cat(str("MQTT"),new Uint8Array([4,2,0,30])),str(id))));
+    };
+    ws.onmessage=e=>{
+      buf=cat(buf,new Uint8Array(e.data));
+      for(;;){
+        if(buf.length<2)return;
+        let m=1,len=0,i=1,b;
+        do{if(i>=buf.length)return;b=buf[i++];len+=(b&127)*m;m*=128}while(b&128);
+        if(buf.length<i+len)return;
+        const type=buf[0]>>4,body=buf.slice(i,i+len);buf=buf.slice(i+len);
+        if(type===2){
+          if(body[1]===0&&!done){done=true;clearTimeout(t);me.open=true;ping=setInterval(()=>{try{ws.send(new Uint8Array([0xC0,0]))}catch{}},20000);res(me)}
+          else fail(new Error("refused"));
+        }else if(type===3){
+          const tl=(body[0]<<8)|body[1],topic=dec.decode(body.subarray(2,2+tl)),h=me.subs.get(topic);
+          if(h)h(body.slice(2+tl));
+        }
+      }
+    };
+  });
+  const pid=()=>Math.floor(Math.random()*65000)+1;
+  me.sub=(topic,h)=>{me.subs.set(topic,h);const id=pid();me.ws.send(pkt(0x82,cat(cat(new Uint8Array([id>>8,id&255]),str(topic)),new Uint8Array([0]))))};
+  me.pub=(topic,payload)=>{if(me.open)me.ws.send(pkt(0x30,cat(str(topic),payload)))};
+  me.buffered=()=>me.ws?me.ws.bufferedAmount:0;
+  me.close=()=>{me.open=false;me.onclose=null;clearInterval(ping);try{me.ws.close()}catch{}};
+  return me;
+}
+/* ---------- end-to-end encryption (key lives only in the private link) ---------- */
+const mkKey=raw=>crypto.subtle.importKey("raw",raw,"AES-GCM",false,["encrypt","decrypt"]);
+async function seal(key,bytes){const iv=crypto.getRandomValues(new Uint8Array(12));return cat(iv,new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,bytes)))}
+async function unseal(key,b){try{return new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv:b.subarray(0,12)},key,b.subarray(12)))}catch{return null}}
+const frame=(type,ts,pl)=>{const o=new Uint8Array(5+pl.length);o[0]=type;new DataView(o.buffer).setUint32(1,ts>>>0);o.set(pl,5);return o};
+const rnd=n=>{const a="abcdefghjkmnpqrstuvwxyz23456789",r=crypto.getRandomValues(new Uint8Array(n));let s="";r.forEach(x=>s+=a[x%a.length]);return s};
+const brokerFor=tag=>tag&&tag[0]==="x"?dec.decode(UB64(tag.slice(1))):BROKERS[+tag];
+
+/* ======================= HOST ======================= */
+const RL={on:false,v:{},t0:0,mq:null,key:null,id:"",raw:null,tag:"",viewers:new Map(),seen:new Set(),gen:0};
+const vCount=sid=>{const n=Date.now();let c=0;RL.viewers.forEach(x=>{if(n-x.t<6000&&x.s===sid)c++});return c};
+const topic=k=>"eztvrelay/"+RL.id+"/"+k;
+const qual=()=>{const b=+(store.get("bitrate","5000000"));return b<=2e6?{w:640,fps:10,q:.5}:b>=1e7?{w:1280,fps:20,q:.7}:{w:854,fps:15,q:.6}};
+async function pubFrame(sid,type,ts,pl){
+  if(!RL.on||!RL.mq||!RL.mq.open)return;
+  RL.mq.pub(topic("s"+sid),await seal(RL.key,frame(type,ts,pl)));
+}
+async function videoLoop(gen){
+  const cv=document.createElement("canvas"),cx=cv.getContext("2d",{alpha:false});
+  while(RL.on&&gen===RL.gen){
+    const t0=performance.now(),Q=qual();let sent=false;
+    for(const s of sources){
+      if(!RL.on)break;
+      const v=s.tv;if(!s.stream||!v||v.readyState<2||!v.videoWidth)continue;
+      RL.v[s.n]=vCount(s.n);if(!RL.v[s.n])continue;
+      if(RL.mq&&RL.mq.buffered()>700000)continue;                 // slow connection: skip a frame instead of falling behind
+      const w=Math.min(Q.w,v.videoWidth),h=Math.round(w*v.videoHeight/v.videoWidth);
+      if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
+      cx.drawImage(v,0,0,w,h);
+      const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",Q.q));if(!blob)continue;
+      await pubFrame(s.n,1,Math.round(performance.now()-RL.t0),new Uint8Array(await blob.arrayBuffer()));sent=true;
+    }
+    await sleep(Math.max(sent?4:300,1000/Q.fps-(performance.now()-t0)));
+  }
+}
+function dropAudio(s){const a=s._rla;if(!a)return;try{a.sp.onaudioprocess=null;a.src.disconnect();a.sp.disconnect();a.mute.disconnect();a.ac.close()}catch{}s._rla=null}
+function tapAudio(s){
+  const tr=s.stream&&s.stream.getAudioTracks()[0];
+  if(!tr||tr.readyState!=="live"){dropAudio(s);return}
+  if(s._rla&&s._rla.tid===tr.id)return;
+  dropAudio(s);
+  const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+  const ac=new AC();ac.resume().catch(()=>{});
+  const src=ac.createMediaStreamSource(new MediaStream([tr])),sp=ac.createScriptProcessor(4096,1,1),mute=ac.createGain();mute.gain.value=0;
+  const ratio=ac.sampleRate/24000,buf=new Int16Array(4800);let bl=0,pos=0,bts=0;
+  sp.onaudioprocess=e=>{
+    if(!RL.on||!(RL.v[s.n]>0)){bl=0;pos=0;return}
+    const inp=e.inputBuffer.getChannelData(0);
+    for(;pos<inp.length-1;pos+=ratio){
+      const i=pos|0,f=pos-i,x=Math.max(-1,Math.min(1,inp[i]+(inp[i+1]-inp[i])*f));
+      if(bl===0)bts=Math.round(performance.now()-RL.t0-(inp.length-i)/ac.sampleRate*1000);
+      buf[bl++]=x<0?x*32768:x*32767;
+      if(bl===buf.length){pubFrame(s.n,2,Math.max(0,bts),new Uint8Array(buf.buffer.slice(0)));bl=0}
+    }
+    pos-=inp.length;if(pos<0)pos=0;
+  };
+  src.connect(sp);sp.connect(mute);mute.connect(ac.destination);
+  s._rla={ac,src,sp,mute,tid:tr.id};
+}
+async function metaLoop(gen){
+  while(RL.on&&gen===RL.gen){
+    if(RL.mq&&RL.mq.open)RL.mq.pub(topic("m"),await seal(RL.key,enc.encode(JSON.stringify({screens:sources.filter(s=>s.stream).map(s=>({n:s.n,name:s.name})),remote:hasOutput()}))));
+    sources.forEach(s=>{if(s.stream&&RL.v[s.n]>0)tapAudio(s);else dropAudio(s)});
+    const n=Date.now();RL.viewers.forEach((x,k)=>{if(n-x.t>30000)RL.viewers.delete(k)});
+    $("#rlWho").textContent=RL.viewers.size&&[...RL.viewers.values()].some(x=>n-x.t<6000)?[...RL.viewers.values()].filter(x=>n-x.t<6000).length+" watching now":"Nobody is watching yet. Send the link to your phone and open it.";
+    await sleep(1500);
+  }
+  sources.forEach(dropAudio);
+}
+function attach(mq){
+  mq.sub(topic("p"),async b=>{
+    const p=await unseal(RL.key,b);if(!p)return;
+    try{const o=JSON.parse(dec.decode(p));if(typeof o.vid==="string"&&Number.isInteger(o.s))RL.viewers.set(o.vid.slice(0,16),{s:o.s,t:Date.now()})}catch{}
+  });
+  mq.sub(topic("c"),async b=>{
+    const key=B64(b.subarray(0,12));if(RL.seen.has(key))return;
+    const p=await unseal(RL.key,b);if(!p)return;
+    let o;try{o=JSON.parse(dec.decode(p))}catch{return}
+    if(!o||Math.abs(Date.now()-(+o.t||0))>20000)return;
+    RL.seen.add(key);if(RL.seen.size>200)RL.seen.delete(RL.seen.values().next().value);
+    onCmd({dc:{send:async t=>{if(RL.mq&&RL.mq.open)RL.mq.pub(topic("a"),await seal(RL.key,enc.encode(t)))}}},JSON.stringify({c:o.c,s:o.s}));
+  });
+}
+async function connectAny(preferTag){
+  const custom=(store.get("mqUrl")||"").trim();
+  const list=preferTag?[[brokerFor(preferTag),preferTag]]:custom?[[custom,"x"+B64(enc.encode(custom))]]:BROKERS.map((u,i)=>[u,String(i)]);
+  for(const [u,tag] of list){try{const mq=MQ(u);await mq.connect();return{mq,tag}}catch{}}
+  throw new Error("none");
+}
+async function reconnect(gen){
+  while(RL.on&&gen===RL.gen){
+    await sleep(3000);
+    try{const {mq}=await connectAny(RL.tag);if(!RL.on||gen!==RL.gen){mq.close();return}RL.mq=mq;mq.onclose=()=>reconnect(gen);attach(mq);say("#rlMsg","On. Send the link to your phone.","ok");return}catch{}
+  }
+}
+function showLink(){
+  const base=(store.get("publicUrl")||"").trim()||location.href.split("#")[0];
+  $("#rlLink").value=base+"#m="+RL.id+"."+B64(RL.raw)+"."+RL.tag;
+  $("#rlBox").hidden=false;$("#rlGo").hidden=true;$("#rlOff").hidden=false;$("#rlShare").hidden=!navigator.share;
+}
+async function relayOn(){
+  if(RL.on)return;
+  if(!window.crypto||!crypto.subtle){say("#rlMsg","This needs a secure page (https). Open EZTV from your https link.","err");return}
+  $("#rlGo").disabled=true;say("#rlMsg","Connecting to the free relay…");
+  try{
+    const saved=(store.get("mqRoom")||"").split(".");
+    RL.id=saved[0]&&saved[1]?saved[0]:rnd(12);RL.raw=saved[1]?UB64(saved[1]):crypto.getRandomValues(new Uint8Array(16));
+    RL.key=await mkKey(RL.raw);
+    const {mq,tag}=await connectAny(saved[2]||"");
+    RL.mq=mq;RL.tag=tag;store.set("mqRoom",RL.id+"."+B64(RL.raw)+"."+tag);
+    RL.on=true;RL.t0=performance.now();RL.v={};RL.viewers.clear();const gen=++RL.gen;
+    mq.onclose=()=>{if(RL.on){say("#rlMsg","Connection lost. Reconnecting…","err");reconnect(gen)}};
+    attach(mq);showLink();videoLoop(gen);metaLoop(gen);
+    say("#rlMsg",/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&!(store.get("publicUrl")||"").trim()?"On, but this link starts with localhost. Open EZTV from your public https link (or add it in Settings) so the link opens on your phone.":"On. Send the link to your phone. It works on Wi-Fi and mobile data.",/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&!(store.get("publicUrl")||"").trim()?"err":"ok");
+  }catch{say("#rlMsg","Couldn't reach a free relay server. Check your internet and try again. (Advanced: you can set your own server in Settings.)","err")}
+  finally{$("#rlGo").disabled=false}
+}
+function relayOff(){
+  RL.on=false;RL.gen++;try{RL.mq&&RL.mq.close()}catch{}RL.mq=null;store.set("mqRoom","");
+  $("#rlBox").hidden=true;$("#rlGo").hidden=false;$("#rlOff").hidden=true;
+  say("#rlMsg","Turned off. The old link no longer works.");
+}
+if($("#rlGo")){
+  $("#rlGo").onclick=relayOn;$("#rlOff").onclick=relayOff;
+  $("#rlCopy").onclick=()=>copyText($("#rlLink").value);
+  $("#rlShare").onclick=()=>shareText("Watch EZTV","Open this link to watch:",$("#rlLink").value);
+  if(store.get("mqRoom"))relayOn();                              // it was on before a reload: keep the same link working
+}
+
+/* ======================= VIEWER (opened from the private link) ======================= */
+const hm=location.hash.match(/[#&]m=([a-z0-9]+)\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/);
+if(hm){
+  const [,id,k,tag]=hm,url=brokerFor(tag),pre="eztvrelay/"+id+"/";
+  window.__mqv={screen:1};
+  const css=document.createElement("style");
+  css.textContent=`#rv{position:fixed;inset:0;z-index:600;background:#04051a;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+#rv canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#rv .rvbar{position:absolute;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));top:max(8px,env(safe-area-inset-top));display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px;border-radius:20px;transition:opacity .3s}
+#rv.idle .rvbar{opacity:0;pointer-events:none}
+#rv .rvchips{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+#rv .rvst{position:absolute;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%);padding:8px 14px;border-radius:999px;font-size:14px;background:rgba(10,12,40,.7);border:1px solid rgba(255,255,255,.2);color:#fff;max-width:90vw;text-align:center}
+#rv .rvst:empty{display:none}
+#rv .rvgo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:20px;padding:18px 34px}
+#rv .on{outline:2px solid rgba(255,255,255,.8)}`;
+  document.head.append(css);
+  const el=document.createElement("div");el.id="rv";
+  el.innerHTML=`<canvas width="16" height="9"></canvas>
+  <div class="rvbar glass"><div class="rvchips" id="rvChips"></div><button class="btn small" id="rvSnd" type="button">Sound: on</button><button class="btn small" id="rvRem" type="button" hidden>Remote</button><button class="btn small" id="rvFs" type="button" hidden>Full screen</button></div>
+  <div class="rvst" id="rvSt">Ready</div><button class="btn primary rvgo" id="rvGo" type="button">Tap to watch</button>`;
+  document.body.append(el);document.documentElement.style.overflow="hidden";
+  const cv=el.querySelector("canvas"),cx=cv.getContext("2d",{alpha:false}),st=t=>{$("#rvSt").textContent=t||""};
+  const RV={on:false,s:1,anchor:null,frames:[],ac:null,gain:null,sound:true,D:800,lastFrame:0,idleT:0,mq:null,key:null,vid:rnd(8)};
+
+  const playAt=ts=>{const n=performance.now();if(!RV.anchor)RV.anchor={ts,wall:n+RV.D,ctx:RV.ac?RV.ac.currentTime+RV.D/1000:0};return RV.anchor.wall+(ts-RV.anchor.ts)};
+  function video(ts,pl){
+    let w=playAt(ts);const n=performance.now();
+    if(w<n-400||w>n+6000){RV.anchor=null;RV.frames.length=0;w=playAt(ts)}
+    createImageBitmap(new Blob([pl],{type:"image/jpeg"})).then(b=>{
+      let i=RV.frames.length;while(i>0&&RV.frames[i-1].w>w)i--;RV.frames.splice(i,0,{w,b});
+      while(RV.frames.length>60){const o=RV.frames.shift();o.b.close&&o.b.close()}
+    }).catch(()=>{});
+  }
+  function audio(ts,pl){
+    if(!RV.ac||pl.byteLength<2)return;
+    playAt(ts);const t=RV.anchor.ctx+(ts-RV.anchor.ts)/1000,now=RV.ac.currentTime;
+    if(t<now-0.4||t>now+6){RV.anchor=null;RV.frames.length=0;playAt(ts);return}
+    if(t<now)return;
+    const i16=new Int16Array(pl.buffer.slice(pl.byteOffset,pl.byteOffset+(pl.byteLength&~1))),f=new Float32Array(i16.length);
+    for(let i=0;i<i16.length;i++)f[i]=i16[i]/32768;
+    const b=RV.ac.createBuffer(1,f.length,24000);b.copyToChannel(f,0);
+    const s=RV.ac.createBufferSource();s.buffer=b;s.connect(RV.gain);s.start(t);
+  }
+  function draw(){
+    if(!RV.on)return;requestAnimationFrame(draw);
+    const now=performance.now();let pick=null;
+    while(RV.frames.length&&RV.frames[0].w<=now){if(pick&&pick.b.close)pick.b.close();pick=RV.frames.shift()}
+    if(pick){
+      if(cv.width!==pick.b.width||cv.height!==pick.b.height){cv.width=pick.b.width;cv.height=pick.b.height}
+      cx.drawImage(pick.b,0,0);if(pick.b.close)pick.b.close();
+      if(!RV.lastFrame)st("");RV.lastFrame=now;
+    }else if(now-RV.lastFrame>4000&&RV.mq&&RV.mq.open&&!/Reconnecting|Couldn/.test($("#rvSt").textContent))st("Waiting for the picture from the host. Is EZTV open on the host and capture started?");
+  }
+  const chips=j=>{
+    const box=$("#rvChips"),sig=j.screens.map(x=>x.n+x.name).join("|");
+    if(box.dataset.sig!==sig){
+      box.dataset.sig=sig;box.innerHTML="";
+      if(j.screens.length>1)j.screens.forEach(x=>{const b=document.createElement("button");b.className="btn small";b.type="button";b.dataset.n=x.n;b.textContent=x.name||("Screen "+x.n);b.onclick=()=>pick(x.n);box.append(b)});
+      if(j.screens.length&&!j.screens.some(x=>x.n===RV.s))pick(j.screens[0].n);else mark();
+    }
+    $("#rvRem").hidden=!j.remote;
+  };
+  const mark=()=>document.querySelectorAll("#rvChips button").forEach(b=>b.classList.toggle("on",+b.dataset.n===RV.s));
+  function onData(b){
+    unseal(RV.key,b).then(p=>{
+      if(!p||p.length<5)return;
+      const type=p[0],ts=new DataView(p.buffer,p.byteOffset+1,4).getUint32(0),pl=p.subarray(5);
+      if(type===1)video(ts,pl);else if(type===2)audio(ts,pl);
+    });
+  }
+  function pick(n){
+    RV.mq&&RV.mq.subs.delete(pre+"s"+RV.s);
+    RV.s=n;RV.anchor=null;RV.frames.length=0;RV.lastFrame=0;window.__mqv.screen=n;mark();
+    if(RV.mq&&RV.mq.open)RV.mq.sub(pre+"s"+n,onData);
+    presence();
+  }
+  async function presence(){if(RV.mq&&RV.mq.open)RV.mq.pub(pre+"p",await seal(RV.key,enc.encode(JSON.stringify({vid:RV.vid,s:RV.s}))))}
+  async function link(){
+    let tries=0;
+    while(RV.on){
+      try{
+        const mq=MQ(url);await mq.connect();RV.mq=mq;tries=0;
+        mq.onclose=()=>{st("Reconnecting…");link()};
+        mq.sub(pre+"m",async b=>{const p=await unseal(RV.key,b);if(p)try{chips(JSON.parse(dec.decode(p)))}catch{}});
+        mq.sub(pre+"a",async b=>{const p=await unseal(RV.key,b);if(p&&window.onMsg)window.onMsg({data:dec.decode(p)})});
+        mq.sub(pre+"s"+RV.s,onData);
+        presence();
+        if(!RV.lastFrame)st("Connected. Waiting for the picture…");
+        return;
+      }catch{tries++;st(tries>2?"Couldn't reach the relay server. Check your connection.":"Connecting…");await sleep(Math.min(4000,700*tries))}
+    }
+  }
+  function idle(){clearTimeout(RV.idleT);el.classList.remove("idle");RV.idleT=setTimeout(()=>{if(RV.on)el.classList.add("idle")},4500)}
+  el.addEventListener("pointerdown",idle,{passive:true});
+  $("#rvGo").onclick=async()=>{
+    $("#rvGo").hidden=true;st("Connecting…");
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext;RV.ac=new AC();await RV.ac.resume();
+      RV.gain=RV.ac.createGain();RV.gain.connect(RV.ac.destination);
+      const b=RV.ac.createBuffer(1,1,22050),s=RV.ac.createBufferSource();s.buffer=b;s.connect(RV.ac.destination);s.start(0);   // unlock iOS audio
+    }catch{RV.ac=null;$("#rvSnd").hidden=true}
+    try{RV.key=await mkKey(UB64(k))}catch{st("This link is not valid. Ask for a new one.");return}
+    RV.on=true;draw();idle();link();
+    setInterval(presence,2000);
+    /* the remote: commands go to the host, which owns the bridge */
+    vdc={get readyState(){return RV.mq&&RV.mq.open?"open":"closed"},send:async m=>{const o=JSON.parse(m);o.t=Date.now();RV.mq.pub(pre+"c",await seal(RV.key,enc.encode(JSON.stringify(o))))}};
+    try{if(navigator.wakeLock)navigator.wakeLock.request("screen").catch(()=>{})}catch{}
+  };
+  $("#rvSnd").onclick=()=>{RV.sound=!RV.sound;if(RV.gain)RV.gain.gain.value=RV.sound?1:0;$("#rvSnd").textContent="Sound: "+(RV.sound?"on":"off")};
+  $("#rvRem").onclick=()=>{try{window.vSeeRemote.toggle()}catch{}};
+  if(document.fullscreenEnabled){$("#rvFs").hidden=false;$("#rvFs").onclick=()=>{document.fullscreenElement?document.exitFullscreen():el.requestFullscreen().catch(()=>{})}}
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){if(RV.ac&&RV.ac.state!=="running")RV.ac.resume().catch(()=>{});if(RV.on&&(!RV.mq||!RV.mq.open))link()}});
+}
 })();
 </script>
 </body>
