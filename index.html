@@ -296,7 +296,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
       <div class="step" id="v1"><div class="num"><span>1</span></div><div class="body">
         <h3>Get the invite</h3>
         <p class="hint">Open the invite link from your host and it fills in automatically. Or paste the code or link here.</p>
-        <textarea id="inv" placeholder="Paste invite link or code" aria-label="Invite link or code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+        <textarea id="inv" placeholder="Type the invite code (like AB3D-EF7K) or paste the link" aria-label="Invite link or code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
       </div></div>
       <div class="step" id="v2"><div class="num"><span>2</span></div><div class="body">
         <h3>Join</h3>
@@ -368,9 +368,10 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
       <h3>Invite a viewer</h3>
       <button class="btn primary" id="mk" type="button" disabled>Create invite</button>
       <div id="invBox" hidden class="stack" style="gap:8px">
+        <div id="codeBig" hidden style="text-align:center;font:700 34px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;padding:14px 8px;margin-bottom:6px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);user-select:all"></div>
         <label class="f">Invite link (send this to the viewer)<input type="url" id="offLink" readonly aria-label="Invite link"></label>
         <div class="row"><button class="btn" id="cpl" type="button">Copy link</button><button class="btn" id="shl" type="button" hidden>Share</button></div>
-        <details><summary class="hint" style="cursor:pointer">Link too long for your app? Use the code instead</summary>
+        <details><summary class="hint" style="cursor:pointer">Show the long code (backup)</summary>
           <textarea id="off" readonly aria-label="Invite code" spellcheck="false" style="margin-top:8px"></textarea>
           <button class="btn small" id="cpo" type="button" style="margin-top:8px">Copy code</button></details>
       </div>
@@ -378,7 +379,8 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     </div></div>
 
     <div class="step" id="s3"><div class="num"><span>3</span></div><div class="body">
-      <h3>Paste their reply</h3>
+      <h3>Connect</h3>
+      <p class="hint">Usually automatic: when the viewer joins, it connects by itself. Only if it does not, paste their reply code here.</p>
       <textarea id="ans" placeholder="Reply code from the viewer" aria-label="Reply code" spellcheck="false"></textarea>
       <button class="btn primary" id="acc" type="button" disabled>Connect</button>
       <div class="status" id="hmsg" role="status" aria-live="polite"></div>
@@ -519,7 +521,47 @@ async function unpack(code){
   if(!j.t||!j.s)throw new Error("bad");
   return {type:j.t,sdp:j.s};
 }
-function iceDone(pc,ms=7000){return new Promise(res=>{
+/* ---------- short invite codes (tiny public mailbox, no account) ---------- */
+const SIG=()=>(store.get("sigUrl")||"https://ntfy.sh/").replace(/\/*$/,"/");
+const CODE_RE=/^[A-HJKMNP-Z2-9]{4}-?[A-HJKMNP-Z2-9]{4}$/i;
+const newCode=()=>{const a="ABCDEFGHJKMNPQRSTUVWXYZ23456789",r=crypto.getRandomValues(new Uint8Array(8));let c="";r.forEach(x=>c+=a[x%a.length]);return c};
+const fmtCode=c=>c.slice(0,4)+"-"+c.slice(4);
+const topic=(c,k)=>SIG()+"eztv-"+c.replace("-","").toUpperCase()+"-"+k;
+async function sigPost(c,k,text){
+  if(text.length>3800)throw new Error("big");
+  const r=await fetch(topic(c,k),{method:"POST",body:text});if(!r.ok)throw new Error("post "+r.status);
+}
+async function sigGet(c,k,tries=3){
+  for(let i=0;i<tries;i++){
+    try{
+      const r=await fetch(topic(c,k)+"/json?poll=1&since=all",{cache:"no-store"});
+      if(r.ok){const m=(await r.text()).split("\n").filter(Boolean).map(l=>{try{return JSON.parse(l)}catch{return null}}).filter(o=>o&&o.event==="message");
+        if(m.length)return m[m.length-1].message}
+    }catch{}
+    await new Promise(r=>setTimeout(r,1200));
+  }
+  return "";
+}
+function sigWatch(c,k,onMsg,stopped){
+  const ac=new AbortController();let n=0;
+  (async()=>{
+    while(!stopped()&&n++<200){
+      try{
+        const r=await fetch(topic(c,k)+"/json?since=all",{signal:ac.signal,cache:"no-store"});
+        const rd=r.body.getReader(),dec=new TextDecoder();let buf="";
+        while(!stopped()){
+          const {done,value}=await rd.read();if(done)break;
+          buf+=dec.decode(value,{stream:true});let i;
+          while((i=buf.indexOf("\n"))>=0){const l=buf.slice(0,i);buf=buf.slice(i+1);
+            try{const o=JSON.parse(l);if(o.event==="message"&&o.message)onMsg(o.message)}catch{}}
+        }
+      }catch{}
+      if(!stopped())await new Promise(r=>setTimeout(r,1500));
+    }
+  })();
+  return ()=>ac.abort();
+}
+function iceDone(pc,ms=9000){return new Promise(res=>{
   if(pc.iceGatheringState==="complete")return res();
   const t=setTimeout(res,ms);
   pc.addEventListener("icegatheringstatechange",()=>{if(pc.iceGatheringState==="complete"){clearTimeout(t);res()}});
@@ -822,7 +864,7 @@ function renderPeers(){
   });
   updateBadge();
 }
-function removePeer(p){try{p.dc&&p.dc.close()}catch{}try{p.pc.close()}catch{}peers.delete(p.id);if(pending===p){pending=null;$("#invBox").hidden=true;$("#acc").disabled=true;$("#s2").classList.remove("done")}renderPeers()}
+function removePeer(p){p.dead=true;try{p.stopWatch&&p.stopWatch()}catch{}try{p.dc&&p.dc.close()}catch{}try{p.pc.close()}catch{}peers.delete(p.id);if(pending===p){pending=null;$("#invBox").hidden=true;$("#acc").disabled=true;$("#s2").classList.remove("done")}renderPeers()}
 
 $("#mk").onclick=async()=>{
   if(!sources.some(s=>s.stream))return;
@@ -853,27 +895,37 @@ $("#mk").onclick=async()=>{
     await p.pc.setLocalDescription(await p.pc.createOffer());
     await iceDone(p.pc);
     const code=await pack(p.pc.localDescription);
-    $("#off").value=code;const pub=store.get("publicUrl").trim(),local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-    $("#offLink").value=(pub||location.href.split("#")[0])+"#i="+code;
+    const pub=store.get("publicUrl").trim(),local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname),base=(pub||location.href.split("#")[0]);
+    let short="";
+    try{short=newCode();await sigPost(short,"o",code)}catch{short=""}
+    if(short){
+      p.code=short;$("#codeBig").hidden=false;$("#codeBig").textContent=fmtCode(short);
+      $("#off").value=fmtCode(short);$("#offLink").value=base+"#c="+short;
+      p.stopWatch=sigWatch(short,"a",txt=>{if(p.answered||p.dead)return;applyAnswer(p,txt,true)},()=>p.answered||p.dead||!peers.has(p.id));
+    }else{
+      $("#codeBig").hidden=true;$("#off").value=code;$("#offLink").value=base+"#i="+code;
+    }
     $("#acc").disabled=false;$("#ans").value="";$("#s2").classList.add("done");$("#s3").classList.remove("done");
-    say("#hmsg",local&&!pub?"This link starts with localhost, so the viewer should open your public EZTV page and paste it into the invite box. Add your public link in Settings to fix that.":"Send the invite link to the viewer, then paste their reply below.");
+    say("#hmsg",short?"Send the viewer this code or link. When they join, it connects by itself.":local&&!pub?"This link starts with localhost, so the viewer should open your public EZTV page and paste it into the invite box. Add your public link in Settings to fix that.":"Send the invite link to the viewer, then paste their reply below.");
   }catch(e){removePeer(p);say("#hmsg","Couldn't create the invite. Reload the page and try again.","err")}
   $("#mk").disabled=!sources.some(s=>s.stream);
 };
 $("#cpl").onclick=()=>copyText($("#offLink").value);
 $("#cpo").onclick=()=>copyText($("#off").value);
 $("#shl").onclick=()=>shareText("Watch on EZTV","Open this link to watch:",$("#offLink").value);
-$("#acc").onclick=async()=>{
-  if(!pending)return;
+async function applyAnswer(p,txt,auto){
+  if(!p||p.answered||p.applying)return;p.applying=true;
   try{
-    const d=await unpack($("#ans").value);if(d.type!=="answer")throw new Error("bad");
-    await pending.pc.setRemoteDescription(d);
-    pending.answered=true;const p=pending;pending=null;
+    const d=await unpack(txt);if(d.type!=="answer")throw new Error("bad");
+    await p.pc.setRemoteDescription(d);
+    p.answered=true;try{p.stopWatch&&p.stopWatch()}catch{}
+    if(pending===p){pending=null;$("#codeBig").hidden=true}
     $("#acc").disabled=true;$("#ans").value="";$("#mk").textContent="Add another viewer";
     say("#hmsg","Connecting…");renderPeers();
     setTimeout(()=>{if(p.pc.connectionState!=="connected"&&p.pc.connectionState!=="failed")say("#hmsg","Still connecting… make sure the viewer's page is open.")},8000);
-  }catch(e){say("#hmsg",e.message==="old"?"This browser can't read that code. Update your browser.":"That reply code isn't valid. Copy all of it again from the viewer.","err")}
-};
+  }catch(e){p.applying=false;if(!auto)say("#hmsg",e.message==="old"?"This browser can't read that code. Update your browser.":"That reply code isn't valid. Copy all of it again from the viewer.","err")}
+}
+$("#acc").onclick=()=>{if(pending)applyAnswer(pending,$("#ans").value,false)};
 
 /* ----- remote output ----- */
 const hasOutput=()=>!!serialWriter||!!$("#hook").value.trim()||$("#bridgeOn").checked;
@@ -1094,8 +1146,15 @@ $("#bar").addEventListener("click",async e=>{
 /* ----- joining ----- */
 function vstate(txt,on){$("#vchip").textContent=txt;$("#connected").querySelector(".dot").classList.toggle("on",!!on)}
 async function join(){
-  const txt=$("#inv").value;
-  if(!txt.trim()){say("#vmsg","Paste the invite link or code from the host first.","err");return}
+  let txt=$("#inv").value.trim(),short="";
+  if(!txt){say("#vmsg","Type the invite code from the host first.","err");return}
+  const cm=txt.match(/[#&?]c=([A-Za-z0-9-]+)/);if(cm)txt=cm[1];
+  if(CODE_RE.test(txt)){
+    short=txt.replace("-","").toUpperCase();$("#joinb").disabled=true;say("#vmsg","Finding your host…");
+    const o=await sigGet(short,"o");$("#joinb").disabled=false;
+    if(!o){say("#vmsg","Couldn't find that code. Check it, or ask the host for a new one.","err");return}
+    txt=o;
+  }
   let offer;
   try{offer=await unpack(txt);if(offer.type!=="offer")throw new Error("bad")}
   catch(e){say("#vmsg",e.message==="old"?"This browser can't read the invite. Update your browser.":"That invite isn't valid. Ask the host for a fresh link.","err");return}
@@ -1131,10 +1190,11 @@ async function join(){
     await pc.setRemoteDescription(offer);
     await pc.setLocalDescription(await pc.createAnswer());
     $("#rep").value="Preparing…";await iceDone(pc);
-    $("#rep").value=await pack(pc.localDescription);
+    const rep=await pack(pc.localDescription);$("#rep").value=rep;
     $("#cprep").disabled=false;$("#shrep").hidden=!canShare;$("#v2").classList.add("done");
-    say("#vmsg","Joined. Now send your reply code to the host.","ok");
-    $("#rep").scrollIntoView({behavior:"smooth",block:"center"});
+    let sent=false;if(short){try{await sigPost(short,"a",rep);sent=true}catch{}}
+    if(sent)say("#vmsg","Joined. Connecting to the host…","ok");
+    else{say("#vmsg","Joined. Now send your reply code to the host.","ok");$("#rep").scrollIntoView({behavior:"smooth",block:"center"})}
   }catch(e){say("#vmsg","Couldn't join. Reload the page and try again.","err")}
   $("#joinb").disabled=false;
 }
@@ -1178,7 +1238,7 @@ document.addEventListener("keydown",e=>{
 /* ----- boot ----- */
 setIcon("#iLayout","grid");setIcon("#iSound","mute");setIcon("#iFs","expand");
 (function boot(){
-  const m=location.hash.match(/[#&]i=([^&]+)/);
+  const m=location.hash.match(/[#&][ic]=([^&]+)/);
   if(m){$("#inv").value=m[1];history.replaceState(null,"",location.pathname+location.search);setMode("view");setTimeout(join,150)}
   else setMode(store.get("mode","view"));
 })();
