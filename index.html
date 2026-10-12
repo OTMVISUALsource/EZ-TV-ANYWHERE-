@@ -463,7 +463,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <li>For a webhook: on https, a plain <code>http://</code> address on your network is blocked by browsers. Use the Bridge instead, or open EZTV from <code>http://localhost:8787</code> while the Bridge is running.</li></ul></div></details>
 </section>
 </main>
-<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 8 · low-delay remote</span></footer>
+<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 10 · resizable remote</span></footer>
 </div>
 
 <dialog id="settings">
@@ -1451,14 +1451,14 @@ css.textContent=`
 .rm-h{display:flex;align-items:center;gap:8px;padding:8px 10px 6px 12px;min-height:48px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}
 .rm.drag .rm-h{cursor:grabbing}
 .rm-h .ri.g{width:18px;height:18px;opacity:.6}
-.rm-t{flex:1;min-width:0;line-height:1.15}.rm-t b{display:block;font-size:15px;font-weight:800;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rm-t small{font-size:11.5px;font-weight:600;color:rgba(236,238,255,.7)}
+.rm-t{flex:1;min-width:0;line-height:1.15}.rm-t b{display:block;font-size:15px;font-weight:800;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rm-t small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;font-weight:600;color:rgba(236,238,255,.7)}
 .rm-dot{width:10px;height:10px;border-radius:50%;background:#ff8aa0;box-shadow:0 0 0 3px rgba(255,138,160,.2);flex:none;transition:background .2s}
 .rm-dot.on{background:#7df0c2;box-shadow:0 0 0 3px rgba(125,240,194,.2),0 0 10px #7df0c2}.rm-dot.warn{background:#ffd37d;box-shadow:0 0 0 3px rgba(255,211,125,.2)}
 .rm.sending .rm-dot{animation:rmPulse .5s infinite alternate;background:#9fd0ff;box-shadow:0 0 12px #9fd0ff}
 @keyframes rmPulse{to{transform:scale(1.5);opacity:.55}}
 .rm-x{position:relative;overflow:hidden;width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.3);color:#fff;display:grid;place-items:center;cursor:pointer;
   background:linear-gradient(160deg,rgba(255,255,255,.34),rgba(255,255,255,.06));box-shadow:inset 0 1px 0 rgba(255,255,255,.45);touch-action:manipulation}
-.rm-x:hover{filter:brightness(1.2)}.rm-x:active{transform:scale(.92)}.rm-x .ri{width:18px;height:18px}
+.rm-h .rm-x{flex:none}#rmSm,#rmBg{width:30px;height:30px;line-height:1}.rm-h{gap:6px}.rm-x:hover{filter:brightness(1.2)}.rm-x:active{transform:scale(.92)}.rm-x .ri{width:18px;height:18px}
 
 .rm-ban{margin:0 12px 6px;padding:9px 12px;border-radius:14px;background:rgba(255,100,130,.26);border:1px solid rgba(255,138,160,.65);font-size:13px;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
 .rm-tabs{display:flex;gap:3px;margin:0 12px 8px;padding:3px;border-radius:999px;background:rgba(6,8,40,.35);border:1px solid rgba(255,255,255,.14)}
@@ -1548,6 +1548,8 @@ const P=document.createElement("div");P.className="rm";P.setAttribute("role","di
 P.innerHTML=`
 <div class="rm-h" id="rmH"><svg class="ri g" viewBox="0 0 24 24" aria-hidden="true">${IC.grip}</svg><i class="rm-dot" id="rmDot"></i>
   <div class="rm-t"><b>vSeeBox Elite Ultra</b><small id="rmSub">via UFO-R6 IR</small></div>
+  <button class="rm-x" id="rmSm" type="button" aria-label="Smaller remote" style="font-size:18px;font-weight:800">−</button>
+  <button class="rm-x" id="rmBg" type="button" aria-label="Bigger remote" style="font-size:18px;font-weight:800">+</button>
   <button class="rm-x" id="rmMin" type="button" aria-label="Minimize remote">${ico("min")}</button>
   <button class="rm-x" id="rmClose" type="button" aria-label="Close remote">${ico("close")}</button></div>
 <div class="rm-ban" id="rmBan" role="alert" hidden><b>Bridge Offline.</b> <span id="rmBanT"></span></div>
@@ -1588,6 +1590,7 @@ P.innerHTML=`
    <label class="rm-f">Command delay (ms)<input id="rmDelay" type="number" min="0" max="2000" step="10" inputmode="numeric"></label>
    <label class="rm-f">Double-press guard (ms)<input id="rmGuard" type="number" min="0" max="1500" step="50" inputmode="numeric"></label>
   </div>
+  <label class="rm-f">Remote size<input id="rmSize" type="range" min="50" max="120" step="5" aria-label="Remote size"></label>
   <label class="rm-f">Glass transparency<input id="rmOp" type="range" min="35" max="100" step="1" aria-label="Remote opacity"></label>
   <button class="rb sm" id="rmReset" type="button">Reset position</button>
   <p class="rm-n">To learn a button: choose it, tap Learn IR, then point the original vSeeBox remote at the UFO-R6 (about 10 cm) and press the matching key once.</p>
@@ -1728,10 +1731,19 @@ P.querySelector(".rm-tabs").addEventListener("click",e=>{const b=e.target.closes
 /* ---- open / close / minimize / drag / remember position ---- */
 const M=6;
 let pos=null;try{pos=JSON.parse(LS.g("rmPos","null"))}catch{}
-function apply(x,y){P.style.transform=`translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;pos={x,y}}
+let sc=clamp(+LS.g("rmScale","1")||1,.5,1.2);
+const eff=()=>Math.min(sc,Math.max(.4,(innerWidth-12)/Math.max(1,P.offsetWidth)));
+const SW=()=>P.offsetWidth*eff(),SH=()=>P.offsetHeight*eff();                  // on-screen size (after resizing)
+function apply(x,y){P.style.transformOrigin="0 0";P.style.transform=`translate3d(${Math.round(x)}px,${Math.round(y)}px,0) scale(${eff()})`;pos={x,y}}
+function setScale(v){
+  sc=clamp(Math.round(v*100)/100,.5,1.2);LS.s("rmScale",String(sc));
+  P.style.maxHeight=`calc((100vh - 8px) / ${sc})`;P.style.maxHeight=`calc((100dvh - 8px) / ${sc})`;
+  const r=$$("#rmSize");if(r)r.value=Math.round(sc*100);
+  if(pos)apply(pos.x,pos.y);fit();
+}
 function fit(){                                       // keep the whole panel on screen
   if(!P.classList.contains("open"))return;
-  const w=P.offsetWidth,h=P.offsetHeight;
+  const w=SW(),h=SH();
   let x,y;
   if(pos){x=pos.x;y=pos.y}else{x=innerWidth-w-18;y=innerWidth<640?innerHeight-h-12:76}      // first run: top right on desktop, bottom on phones
   apply(clamp(x,M,innerWidth-w-M),clamp(y,M,innerHeight-h-M));
@@ -1743,9 +1755,12 @@ function open(){
 function close(){P.classList.remove("open");ob.setAttribute("aria-expanded","false");clearInterval(poll);stopHold()}
 ob.onclick=()=>P.classList.contains("open")?close():open();
 $$("#rmClose").onclick=close;
+$$("#rmSm").onclick=()=>setScale(sc-.1);$$("#rmBg").onclick=()=>setScale(sc+.1);
+$$("#rmSize").oninput=e=>setScale(+e.target.value/100);
 $$("#rmMin").onclick=()=>{const m=P.classList.toggle("min");$$("#rmMin").setAttribute("aria-label",m?"Expand remote":"Minimize remote");if(m)stopHold();requestAnimationFrame(fit)};
 $$("#rmReset").onclick=()=>{pos=null;LS.s("rmPos","null");fit()};
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&P.classList.contains("open")&&!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)&&!document.querySelector("dialog[open]")&&!document.fullscreenElement){close()}});
+setScale(sc);
 if(window.ResizeObserver)new ResizeObserver(()=>fit()).observe(P);
 addEventListener("resize",fit);addEventListener("orientationchange",()=>setTimeout(fit,250));
 /* native full screen only shows the full-screen element's children, so follow it */
@@ -1766,7 +1781,7 @@ H.addEventListener("pointerdown",e=>{
 });
 H.addEventListener("pointermove",e=>{
   if(!drag||e.pointerId!==drag.id)return;
-  apply(clamp(e.clientX-drag.dx,M,innerWidth-P.offsetWidth-M),clamp(e.clientY-drag.dy,M,innerHeight-P.offsetHeight-M));
+  apply(clamp(e.clientX-drag.dx,M,innerWidth-SW()-M),clamp(e.clientY-drag.dy,M,innerHeight-SH()-M));
 });
 const endDrag=e=>{if(!drag)return;drag=null;P.classList.remove("drag");if(pos)LS.s("rmPos",JSON.stringify(pos))};
 ["pointerup","pointercancel","lostpointercapture"].forEach(ev=>H.addEventListener(ev,endDrag));
@@ -1974,9 +1989,9 @@ async function videoLoop(gen){
       if(RL.mq&&RL.mq.buffered()>160000)continue;                 // slow connection: skip a frame instead of falling behind
       const w=Math.min(Q.w,v.videoWidth),h=Math.round(w*v.videoHeight/v.videoWidth);
       if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
-      cx.drawImage(v,0,0,w,h);
+      cx.drawImage(v,0,0,w,h);const vts=Math.round(performance.now()-RL.t0);
       const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",Q.q));if(!blob)continue;
-      await pubFrame(s.n,1,Math.round(performance.now()-RL.t0),new Uint8Array(await blob.arrayBuffer()));sent=true;
+      await pubFrame(s.n,1,vts,new Uint8Array(await blob.arrayBuffer()));sent=true;
     }
     await sleep(Math.max(sent?4:300,1000/Q.fps-(performance.now()-t0)));
   }
@@ -2164,11 +2179,11 @@ function startViewer(id,k,tag){
   document.head.append(css);
   const el=document.createElement("div");el.id="rv";
   el.innerHTML=`<canvas width="16" height="9"></canvas>
-  <div class="rvbar glass"><div class="rvchips" id="rvChips"></div><button class="btn small" id="rvSnd" type="button">Sound: on</button><button class="btn small" id="rvRem" type="button" hidden>Remote</button><button class="btn small" id="rvFs" type="button" hidden>Full screen</button></div>
+  <div class="rvbar glass"><div class="rvchips" id="rvChips"></div><button class="btn small" id="rvSnd" type="button">Sound: on</button><button class="btn small" id="rvSyM" type="button" title="Picture earlier">Sync −</button><button class="btn small" id="rvSyP" type="button" title="Picture later">Sync +</button><button class="btn small" id="rvRem" type="button" hidden>Remote</button><button class="btn small" id="rvFs" type="button" hidden>Full screen</button></div>
   <div class="rvst" id="rvSt">Ready</div><button class="btn primary rvgo" id="rvGo" type="button">Tap to watch</button>`;
   document.body.append(el);document.documentElement.style.overflow="hidden";
   const cv=el.querySelector("canvas"),cx=cv.getContext("2d",{alpha:false}),st=t=>{$("#rvSt").textContent=t||""};
-  const RV={late:[],on:false,s:1,anchor:null,frames:[],ac:null,gain:null,sound:true,D:600,lastFrame:0,idleT:0,mq:null,key:null,vid:rnd(8)};
+  const RV={avoff:0,man:(()=>{try{return +localStorage.getItem("eztv_sync")||0}catch{return 0}})(),late:[],on:false,s:1,anchor:null,frames:[],ac:null,gain:null,sound:true,D:600,lastFrame:0,idleT:0,mq:null,key:null,vid:rnd(8)};
 
   const playAt=ts=>{const n=performance.now();if(!RV.anchor)RV.anchor={ts,wall:n+RV.D,ctx:RV.ac?RV.ac.currentTime+RV.D/1000:0};return RV.anchor.wall+(ts-RV.anchor.ts)};
   function video(ts,pl){
@@ -2186,8 +2201,10 @@ function startViewer(id,k,tag){
     if(!RV.ac||pl.byteLength<2||RV.ac.state==="closed")return;
     playAt(ts);const R=RV.ac.sampleRate,now=RV.ac.currentTime,ideal=RV.anchor.ctx+(ts-RV.anchor.ts)/1000;
     if(!AU.next||AU.next>now+5||AU.next<now-0.05){AU.next=Math.max(ideal,now+0.12);AU.fade=true;AU.pos=0}   // first chunk, or we ran dry: restart cleanly a moment ahead
-    else if(AU.next-ideal>0.5){return}                                                                       // audio running behind the picture: skip a chunk to catch up
+    else if(AU.next-ideal>0.6){return}                                                                       // audio running behind the picture: skip a chunk to catch up
     else if(ideal-AU.next>0.35){AU.next=Math.max(ideal,now+0.05);AU.fade=true;AU.pos=0}                    // far ahead of the picture: wait
+    {const lat=((RV.ac.outputLatency||0)+(RV.ac.baseLatency||0))*1000,late=(AU.next-ideal)*1000+lat;      // how late the sound really comes out vs. its intended time
+     RV.avoff=RV.avoff*0.8+Math.max(-300,Math.min(900,late))*0.2}
     const i16=new Int16Array(pl.buffer.slice(pl.byteOffset,pl.byteOffset+(pl.byteLength&~1))),n=i16.length,step=24000/R;
     const out=new Float32Array(Math.ceil((n+1)/step)+2);let o=0,p=AU.pos;
     if(AU.fade)AU.prev=i16[0]/32768;
@@ -2201,7 +2218,7 @@ function startViewer(id,k,tag){
     if(!RV.on)return;requestAnimationFrame(draw);
     const now=performance.now();
     if(now-(RV.dT||0)>6000){RV.dT=now;if(RV.D>350&&!RV.late.some(t=>now-t<6000))RV.D-=50}let pick=null;
-    while(RV.frames.length&&RV.frames[0].w<=now){if(pick&&pick.b.close)pick.b.close();pick=RV.frames.shift()}
+    const off=RV.avoff+RV.man;while(RV.frames.length&&RV.frames[0].w+off<=now){if(pick&&pick.b.close)pick.b.close();pick=RV.frames.shift()}
     if(pick){
       if(cv.width!==pick.b.width||cv.height!==pick.b.height){cv.width=pick.b.width;cv.height=pick.b.height}
       cx.drawImage(pick.b,0,0);if(pick.b.close)pick.b.close();
@@ -2273,6 +2290,9 @@ function startViewer(id,k,tag){
     vdc={get readyState(){return (RV.cq&&RV.cq.open)||(RV.mq&&RV.mq.open)?"open":"closed"},send:async m=>{const o=JSON.parse(m);o.t=Date.now();const q=RV.cq&&RV.cq.open?RV.cq:RV.mq;q.pub(pre+"c",await seal(RV.key,enc.encode(JSON.stringify(o))))}};
     try{if(navigator.wakeLock)navigator.wakeLock.request("screen").catch(()=>{})}catch{}
   };
+  const syncUI=()=>{$("#rvSyM").textContent="Sync −";$("#rvSyP").textContent="Sync +";$("#rvSt").textContent="Picture offset "+(RV.man>0?"+":"")+RV.man+" ms";setTimeout(()=>{if(/Picture offset/.test($("#rvSt").textContent))st("")},1500);try{localStorage.setItem("eztv_sync",RV.man)}catch{}};
+  $("#rvSyM").onclick=()=>{RV.man=Math.max(-600,RV.man-60);syncUI()};
+  $("#rvSyP").onclick=()=>{RV.man=Math.min(1200,RV.man+60);syncUI()};
   $("#rvSnd").onclick=()=>{RV.sound=!RV.sound;if(RV.gain)RV.gain.gain.value=RV.sound?1:0;$("#rvSnd").textContent="Sound: "+(RV.sound?"on":"off")};
   $("#rvRem").onclick=()=>{try{window.vSeeRemote.toggle()}catch{}};
   if(document.fullscreenEnabled){$("#rvFs").hidden=false;$("#rvFs").onclick=()=>{document.fullscreenElement?document.exitFullscreen():el.requestFullscreen().catch(()=>{})}}
