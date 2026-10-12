@@ -463,7 +463,7 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <li>For a webhook: on https, a plain <code>http://</code> address on your network is blocked by browsers. Use the Bridge instead, or open EZTV from <code>http://localhost:8787</code> while the Bridge is running.</li></ul></div></details>
 </section>
 </main>
-<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 6 · QR invite + mobile data</span></footer>
+<footer>EZTV runs entirely in your browser. No accounts, no uploads. <span id="ver">Version 7 · smoother sound + faster remote</span></footer>
 </div>
 
 <dialog id="settings">
@@ -975,9 +975,15 @@ async function onCmd(p,raw){
   let m;try{m=JSON.parse(raw)}catch{return}
   if(!m.c||typeof m.c!=="string"||m.c.length>24||!/^[a-z0-9_]+$/i.test(m.c))return;
   const n=Number.isInteger(m.s)?m.s:(sources[0]?sources[0].n:1);
-  const ok=await run(m.c,n);
-  try{p.dc.send(JSON.stringify({t:"ack",c:m.c,out:ok,err:ok?"":runErr}))}catch{}
+  if(onCmd.q>10)return;                                            // never build a long queue
+  onCmd.q++;
+  const job=onCmd.chain.then(async()=>{
+    const ok=await run(m.c,n);
+    try{p.dc.send(JSON.stringify({t:"ack",c:m.c,out:ok,err:ok?"":runErr}))}catch{}
+  }).catch(()=>{}).finally(()=>{onCmd.q--});
+  onCmd.chain=job;return job;
 }
+onCmd.q=0;onCmd.chain=Promise.resolve();
 function syncBridge(){
   $("#bridgeBox").hidden=!$("#bridgeOn").checked;
   store.set("bridgeOn",$("#bridgeOn").checked?"1":"0");store.set("bridgeUrl",$("#bridgeUrl").value.trim());
@@ -1368,9 +1374,10 @@ async function transport(c){
     if(!hostLinkUp())return{ok:false,kind:"offline",error:"Not connected to the host"};
     const w=wire(c);
     return new Promise(res=>{
-      const t=setTimeout(()=>{delete pend[w];res({ok:false,kind:"timeout",error:"The host didn't answer in time"})},TIMEOUT+2500);
-      pend[w]=r=>{clearTimeout(t);res({ok:!!r.ok,error:r.err||""})};
-      try{vdc.send(JSON.stringify({c:w,s}))}catch{clearTimeout(t);delete pend[w];res({ok:false,kind:"offline",error:"Link to the host was lost"})}
+      const q=pend[w]||(pend[w]=[]);
+      const t=setTimeout(()=>{const i=q.indexOf(f);if(i>=0)q.splice(i,1);res({ok:false,kind:"timeout",error:"The host didn't answer in time"})},TIMEOUT+2500);
+      const f=r=>{clearTimeout(t);res({ok:!!r.ok,error:r.err||""})};q.push(f);
+      try{vdc.send(JSON.stringify({c:w,s}))}catch{clearTimeout(t);const i=q.indexOf(f);if(i>=0)q.splice(i,1);res({ok:false,kind:"offline",error:"Link to the host was lost"})}
     });
   }
   try{const j=await IRBridge.send(c,s);return{ok:!!j.ok,error:j.error||"",code:j.code||""}}
@@ -1379,7 +1386,7 @@ async function transport(c){
 /* acks from the host (viewer phones) */
 const _om=window.onMsg;
 window.onMsg=function(e){
-  try{const o=JSON.parse(e.data);if(o&&o.t==="ack"&&pend[o.c]){const f=pend[o.c];delete pend[o.c];f(o.out?{ok:true}:{ok:false,err:o.err||"The host has no remote output set up"})}}catch{}
+  try{const o=JSON.parse(e.data);if(o&&o.t==="ack"&&pend[o.c]&&pend[o.c].length){const f=pend[o.c].shift();f(o.out?{ok:true}:{ok:false,err:o.err||"The host has no remote output set up"})}}catch{}
   return _om.apply(this,arguments);
 };
 /* single entry point: every remote button goes through here */
@@ -1388,9 +1395,11 @@ const delay=()=>Math.max(0,+LS.g("irDelay",120)||0),guard=()=>Math.max(0,+LS.g("
 function sendIRCommand(command,opt={}){
   const c=String(command).toUpperCase(),now=Date.now();
   if(!/^[A-Z0-9_]{1,24}$/.test(c))return Promise.resolve({ok:false,error:"Unknown command"});
-  if(!opt.force&&now-(lastTap[c]||0)<guard())return Promise.resolve({ok:false,skipped:true});   // accidental double press
+  const remote=viaHost();
+  if(!opt.force&&now-(lastTap[c]||0)<(remote?Math.min(guard(),90):guard()))return Promise.resolve({ok:false,skipped:true});   // accidental double press
   if(inflight>=6)return Promise.resolve({ok:false,skipped:true});                                 // never build a long queue
   lastTap[c]=now;lastSent=c;inflight++;
+  if(remote){return transport(c).finally(()=>{inflight--})}                                         // phone: fire immediately, the host keeps them in order
   const job=chain.then(()=>transport(c)).finally(()=>{inflight--});
   chain=job.catch(()=>{}).then(()=>sleep(delay()));                                                // configurable command delay
   return job;
@@ -1884,7 +1893,7 @@ const cat=(a,b)=>{const c=new Uint8Array(a.length+b.length);c.set(a);c.set(b,a.l
 function MQ(url){
   const me={ws:null,open:false,subs:new Map(),onclose:null};
   let user="",pass="";const um=url.match(/^(wss?:\/\/)([^:@\/]+):([^@\/]*)@(.*)$/);if(um){user=um[2];pass=um[3];url=um[1]+um[4]}
-  let buf=new Uint8Array(0),ping=0;
+  let buf=new Uint8Array(0),ping=0;me.rx=Date.now();
   const str=s=>{const b=enc.encode(s);return cat(new Uint8Array([b.length>>8,b.length&255]),b)};
   const rl=n=>{const o=[];do{let d=n%128;n=Math.floor(n/128);if(n>0)d|=128;o.push(d)}while(n>0);return new Uint8Array(o)};
   const pkt=(h,body)=>cat(cat(new Uint8Array([h]),rl(body.length)),body);
@@ -1899,7 +1908,7 @@ function MQ(url){
       ws.send(pkt(0x10,cat(cat(cat(str("MQTT"),new Uint8Array([4,user?0xC2:2,0,30])),str(id)),user?cat(str(user),str(pass)):new Uint8Array(0))));
     };
     ws.onmessage=e=>{
-      buf=cat(buf,new Uint8Array(e.data));
+      me.rx=Date.now();buf=cat(buf,new Uint8Array(e.data));
       for(;;){
         if(buf.length<2)return;
         let m=1,len=0,i=1,b;
@@ -1907,7 +1916,7 @@ function MQ(url){
         if(buf.length<i+len)return;
         const type=buf[0]>>4,body=buf.slice(i,i+len);buf=buf.slice(i+len);
         if(type===2){
-          if(body[1]===0&&!done){done=true;clearTimeout(t);me.open=true;ping=setInterval(()=>{try{ws.send(new Uint8Array([0xC0,0]))}catch{}},20000);res(me)}
+          if(body[1]===0&&!done){done=true;clearTimeout(t);me.open=true;me.rx=Date.now();ping=setInterval(()=>{try{ws.send(new Uint8Array([0xC0,0]))}catch{}if(Date.now()-me.rx>25000){try{ws.close()}catch{}}},8000);res(me)}
           else fail(new Error("refused"));
         }else if(type===3){
           const tl=(body[0]<<8)|body[1],topic=dec.decode(body.subarray(2,2+tl)),h=me.subs.get(topic);
@@ -1948,7 +1957,7 @@ async function videoLoop(gen){
       if(!RL.on)break;
       const v=s.tv;if(!s.stream||!v||v.readyState<2||!v.videoWidth)continue;
       RL.v[s.n]=vCount(s.n);if(!RL.v[s.n])continue;
-      if(RL.mq&&RL.mq.buffered()>700000)continue;                 // slow connection: skip a frame instead of falling behind
+      if(RL.mq&&RL.mq.buffered()>160000)continue;                 // slow connection: skip a frame instead of falling behind
       const w=Math.min(Q.w,v.videoWidth),h=Math.round(w*v.videoHeight/v.videoWidth);
       if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
       cx.drawImage(v,0,0,w,h);
@@ -1958,29 +1967,48 @@ async function videoLoop(gen){
     await sleep(Math.max(sent?4:300,1000/Q.fps-(performance.now()-t0)));
   }
 }
-function dropAudio(s){const a=s._rla;if(!a)return;try{a.sp.onaudioprocess=null;a.src.disconnect();a.sp.disconnect();a.mute.disconnect();a.ac.close()}catch{}s._rla=null}
+function dropAudio(s){const a=s._rla;if(!a)return;a.dead=true;try{a.sp&&(a.sp.onaudioprocess=null);a.node&&(a.node.port.onmessage=null);a.src.disconnect();(a.sp||a.node).disconnect();a.mute.disconnect();a.ac.close()}catch{}s._rla=null}
+const WORKLET='class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(1024);this.n=0}process(i){const c=i[0]&&i[0][0];if(c){for(let k=0;k<c.length;k++){this.b[this.n++]=c[k];if(this.n===1024){this.port.postMessage(this.b);this.b=new Float32Array(1024);this.n=0}}}return true}}registerProcessor("eztv-tap",P)';
 function tapAudio(s){
   const tr=s.stream&&s.stream.getAudioTracks()[0];
   if(!tr||tr.readyState!=="live"){dropAudio(s);return}
   if(s._rla&&s._rla.tid===tr.id)return;
   dropAudio(s);
   const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
-  const ac=new AC();ac.resume().catch(()=>{});
-  const src=ac.createMediaStreamSource(new MediaStream([tr])),sp=ac.createScriptProcessor(4096,1,1),mute=ac.createGain();mute.gain.value=0;
-  const ratio=ac.sampleRate/24000,buf=new Int16Array(4800);let bl=0,pos=0,bts=0;
-  sp.onaudioprocess=e=>{
-    if(!RL.on||!(RL.v[s.n]>0)){bl=0;pos=0;return}
-    const inp=e.inputBuffer.getChannelData(0);
-    for(;pos<inp.length-1;pos+=ratio){
-      const i=pos|0,f=pos-i,x=Math.max(-1,Math.min(1,inp[i]+(inp[i+1]-inp[i])*f));
-      if(bl===0)bts=Math.round(performance.now()-RL.t0-(inp.length-i)/ac.sampleRate*1000);
+  const ac=new AC({latencyHint:"interactive"});ac.resume().catch(()=>{});
+  const src=ac.createMediaStreamSource(new MediaStream([tr])),mute=ac.createGain();mute.gain.value=0;
+  const A={ac,src,mute,tid:tr.id,dead:false};s._rla=A;
+  const sr=ac.sampleRate,ratio=sr/24000,CH=2400,buf=new Int16Array(CH);
+  const lp=1-Math.exp(-2*Math.PI*10000/sr);                       // gentle low-pass before 24 kHz (prevents harsh aliasing)
+  let y1=0,y2=0,prev=0,bl=0,pos=0,total=0,base=-1,bts=0,idx=0,have=false;
+  const feed=inp=>{                                                // runs for every block of input audio, in order, no gaps
+    if(A.dead)return;
+    if(!RL.on||!(RL.v[s.n]>0)){bl=0;pos=0;base=-1;have=false;return}
+    if(base<0){base=performance.now()-RL.t0-inp.length/sr*1000-total/sr*1000}
+    const n=inp.length;
+    for(let i=0;i<n;i++){y1+=lp*(inp[i]-y1);y2+=lp*(y1-y2);inp[i]=y2}
+    for(;pos<n-1;pos+=ratio){
+      const i=pos|0,f=pos-i,a=i<0?prev:inp[i];
+      let x=a+(inp[i+1]-a)*f;x=x>1?1:x<-1?-1:x;
+      if(bl===0)bts=Math.round(base+(total+pos)/sr*1000);
       buf[bl++]=x<0?x*32768:x*32767;
-      if(bl===buf.length){pubFrame(s.n,2,Math.max(0,bts),new Uint8Array(buf.buffer.slice(0)));bl=0}
+      if(bl===CH){pubFrame(s.n,2,Math.max(0,bts),new Uint8Array(buf.buffer.slice(0)));bl=0}
     }
-    pos-=inp.length;if(pos<0)pos=0;
+    prev=inp[n-1];pos-=n;total+=n;
   };
-  src.connect(sp);sp.connect(mute);mute.connect(ac.destination);
-  s._rla={ac,src,sp,mute,tid:tr.id};
+  if(ac.audioWorklet&&window.Blob&&typeof AudioWorkletNode==="function"){
+    const u=URL.createObjectURL(new Blob([WORKLET],{type:"application/javascript"}));
+    ac.audioWorklet.addModule(u).then(()=>{
+      URL.revokeObjectURL(u);if(A.dead)return;
+      const node=new AudioWorkletNode(ac,"eztv-tap",{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});
+      node.port.onmessage=e=>feed(new Float32Array(e.data));
+      src.connect(node);node.connect(mute);mute.connect(ac.destination);A.node=node;
+    }).catch(()=>{URL.revokeObjectURL(u);if(!A.dead)fallback()});
+  }else fallback();
+  function fallback(){                                              // older browsers: same job on the main thread
+    const sp=ac.createScriptProcessor(2048,1,1);sp.onaudioprocess=e=>feed(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(sp);sp.connect(mute);mute.connect(ac.destination);A.sp=sp;
+  }
 }
 async function metaLoop(gen){
   while(RL.on&&gen===RL.gen){
@@ -2111,26 +2139,33 @@ function startViewer(id,k,tag){
   <div class="rvst" id="rvSt">Ready</div><button class="btn primary rvgo" id="rvGo" type="button">Tap to watch</button>`;
   document.body.append(el);document.documentElement.style.overflow="hidden";
   const cv=el.querySelector("canvas"),cx=cv.getContext("2d",{alpha:false}),st=t=>{$("#rvSt").textContent=t||""};
-  const RV={on:false,s:1,anchor:null,frames:[],ac:null,gain:null,sound:true,D:800,lastFrame:0,idleT:0,mq:null,key:null,vid:rnd(8)};
+  const RV={on:false,s:1,anchor:null,frames:[],ac:null,gain:null,sound:true,D:600,lastFrame:0,idleT:0,mq:null,key:null,vid:rnd(8)};
 
   const playAt=ts=>{const n=performance.now();if(!RV.anchor)RV.anchor={ts,wall:n+RV.D,ctx:RV.ac?RV.ac.currentTime+RV.D/1000:0};return RV.anchor.wall+(ts-RV.anchor.ts)};
   function video(ts,pl){
     let w=playAt(ts);const n=performance.now();
-    if(w<n-400||w>n+6000){RV.anchor=null;RV.frames.length=0;w=playAt(ts)}
+    if(w<n-400||w>n+6000){if(w<n-400)RV.D=Math.min(1800,RV.D+250);RV.anchor=null;RV.frames.length=0;AU.next=0;w=playAt(ts)}
     createImageBitmap(new Blob([pl],{type:"image/jpeg"})).then(b=>{
       let i=RV.frames.length;while(i>0&&RV.frames[i-1].w>w)i--;RV.frames.splice(i,0,{w,b});
       while(RV.frames.length>60){const o=RV.frames.shift();o.b.close&&o.b.close()}
     }).catch(()=>{});
   }
+  /* audio: one continuous timeline. Every chunk starts exactly where the last one ended, resampled by us to the phone's own rate, so there are no clicks at the seams. */
+  const AU={next:0,prev:0,pos:0,fade:true};
   function audio(ts,pl){
-    if(!RV.ac||pl.byteLength<2)return;
-    playAt(ts);const t=RV.anchor.ctx+(ts-RV.anchor.ts)/1000,now=RV.ac.currentTime;
-    if(t<now-0.4||t>now+6){RV.anchor=null;RV.frames.length=0;playAt(ts);return}
-    if(t<now)return;
-    const i16=new Int16Array(pl.buffer.slice(pl.byteOffset,pl.byteOffset+(pl.byteLength&~1))),f=new Float32Array(i16.length);
-    for(let i=0;i<i16.length;i++)f[i]=i16[i]/32768;
-    const b=RV.ac.createBuffer(1,f.length,24000);b.copyToChannel(f,0);
-    const s=RV.ac.createBufferSource();s.buffer=b;s.connect(RV.gain);s.start(t);
+    if(!RV.ac||pl.byteLength<2||RV.ac.state==="closed")return;
+    playAt(ts);const R=RV.ac.sampleRate,now=RV.ac.currentTime,ideal=RV.anchor.ctx+(ts-RV.anchor.ts)/1000;
+    if(!AU.next||AU.next>now+5||AU.next<now-0.05){AU.next=Math.max(ideal,now+0.12);AU.fade=true;AU.pos=0}   // first chunk, or we ran dry: restart cleanly a moment ahead
+    else if(AU.next-ideal>0.5){return}                                                                       // audio running behind the picture: skip a chunk to catch up
+    else if(ideal-AU.next>0.35){AU.next=Math.max(ideal,now+0.05);AU.fade=true;AU.pos=0}                    // far ahead of the picture: wait
+    const i16=new Int16Array(pl.buffer.slice(pl.byteOffset,pl.byteOffset+(pl.byteLength&~1))),n=i16.length,step=24000/R;
+    const out=new Float32Array(Math.ceil((n+1)/step)+2);let o=0,p=AU.pos;
+    if(AU.fade)AU.prev=i16[0]/32768;
+    for(;p<n-1&&o<out.length;p+=step){const i=Math.floor(p),f=p-i,a=i<0?AU.prev:i16[i]/32768,b=i16[i+1]/32768;out[o++]=a+(b-a)*f}
+    AU.pos=p-n;AU.prev=i16[n-1]/32768;
+    if(AU.fade){const k=Math.min(o,Math.round(R*0.004));for(let i=0;i<k;i++)out[i]*=i/k;AU.fade=false}
+    const b=RV.ac.createBuffer(1,o,R);b.copyToChannel(out.subarray(0,o),0);
+    const src=RV.ac.createBufferSource();src.buffer=b;src.connect(RV.gain);src.start(AU.next);AU.next+=o/R;
   }
   function draw(){
     if(!RV.on)return;requestAnimationFrame(draw);
@@ -2139,7 +2174,7 @@ function startViewer(id,k,tag){
     if(pick){
       if(cv.width!==pick.b.width||cv.height!==pick.b.height){cv.width=pick.b.width;cv.height=pick.b.height}
       cx.drawImage(pick.b,0,0);if(pick.b.close)pick.b.close();
-      if(!RV.lastFrame)st("");RV.lastFrame=now;
+      if(!RV.lastFrame||/Reconnecting|Waiting|Connected/.test($("#rvSt").textContent))st("");RV.lastFrame=now;
     }else if(now-RV.lastFrame>4000&&RV.mq&&RV.mq.open&&!/Reconnecting|Couldn/.test($("#rvSt").textContent))st("Waiting for the picture from the host. Is EZTV open on the host and capture started?");
   }
   const chips=j=>{
@@ -2161,7 +2196,7 @@ function startViewer(id,k,tag){
   }
   function pick(n){
     RV.mq&&RV.mq.subs.delete(pre+"s"+RV.s);
-    RV.s=n;RV.anchor=null;RV.frames.length=0;RV.lastFrame=0;window.__mqv.screen=n;mark();
+    RV.s=n;RV.anchor=null;RV.frames.length=0;AU.next=0;RV.lastFrame=0;window.__mqv.screen=n;mark();
     if(RV.mq&&RV.mq.open)RV.mq.sub(pre+"s"+n,onData);
     presence();
   }
@@ -2171,16 +2206,17 @@ function startViewer(id,k,tag){
     while(RV.on){
       try{
         const mq=MQ(url);await mq.connect();RV.mq=mq;tries=0;
-        mq.onclose=()=>{st("Reconnecting…");link()};
+        mq.onclose=()=>{st("Reconnecting…");setTimeout(link,400)};
         mq.sub(pre+"m",async b=>{const p=await unseal(RV.key,b);if(p)try{chips(JSON.parse(dec.decode(p)))}catch{}});
         mq.sub(pre+"a",async b=>{const p=await unseal(RV.key,b);if(p&&window.onMsg)window.onMsg({data:dec.decode(p)})});
         mq.sub(pre+"s"+RV.s,onData);
         presence();
-        if(!RV.lastFrame)st("Connected. Waiting for the picture…");
+        if(!RV.lastFrame)st("Connected. Waiting for the picture…");else st("");
         return;
       }catch{tries++;st(tries>2?"Couldn't reach the relay server. Check your connection.":"Connecting…");await sleep(Math.min(4000,700*tries))}
     }
   }
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&RV.on&&(!RV.mq||!RV.mq.open||Date.now()-RV.mq.rx>15000)){try{RV.mq&&RV.mq.ws.close()}catch{}}});
   function idle(){clearTimeout(RV.idleT);el.classList.remove("idle");RV.idleT=setTimeout(()=>{if(RV.on)el.classList.add("idle")},4500)}
   el.addEventListener("pointerdown",idle,{passive:true});
   $("#rvGo").onclick=async()=>{
