@@ -458,6 +458,9 @@ footer{color:var(--faint);font-size:13px;text-align:center;padding:26px 0 6px}
     <label class="f">TURN URL<input type="text" id="turnUrl" placeholder="turn:turn.example.com:3478" spellcheck="false" autocapitalize="off"></label>
     <label class="f">Username<input type="text" id="turnUser" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
     <label class="f">Password<input type="password" id="turnPass" autocomplete="off"></label>
+    <p class="hint">Leave these blank to use the built-in relay.</p>
+    <button class="btn" type="button" id="turnTest">Test TURN server</button>
+    <p class="status" id="turnRes" role="status"></p>
     <div class="row"><button class="btn primary" value="save">Save</button><button class="btn" value="cancel">Cancel</button></div>
   </form>
 </dialog>
@@ -521,10 +524,12 @@ function iceDone(pc,ms=7000){return new Promise(res=>{
   const t=setTimeout(res,ms);
   pc.addEventListener("icegatheringstatechange",()=>{if(pc.iceGatheringState==="complete"){clearTimeout(t);res()}});
 })}
+const DEFAULT_TURN={urls:["turn:global.relay.metered.ca:80","turn:global.relay.metered.ca:80?transport=tcp","turn:global.relay.metered.ca:443","turns:global.relay.metered.ca:443?transport=tcp"],username:"8dbe1ebb3d11d0ad8b85bebd",credential:"Ca21PKFINt6Y4Gw/"};
 function rtcConfig(){
   const servers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302","stun:stun.cloudflare.com:3478"]}];
   const u=store.get("turnUrl").trim();
   if(u)servers.push({urls:u.split(/[\s,]+/).filter(Boolean),username:store.get("turnUser"),credential:store.get("turnPass")});
+  else servers.push(DEFAULT_TURN);   // built-in relay so phones on any network can connect; Settings overrides it
   return {iceServers:servers,bundlePolicy:"max-bundle"};
 }
 
@@ -547,6 +552,23 @@ function openSettings(focusTurn){
   if(focusTurn){const t=$("#turnUrl");t.scrollIntoView({block:"center"});setTimeout(()=>t.focus(),50)}
 }
 $("#openSet").onclick=()=>openSettings();
+$("#turnTest").onclick=async()=>{
+  const b=$("#turnTest");b.disabled=true;say("#turnRes","Testing… (up to 10 s)");
+  const u=$("#turnUrl").value.trim();
+  const srv=u?{urls:u.split(/[\s,]+/).filter(Boolean),username:$("#turnUser").value,credential:$("#turnPass").value}:DEFAULT_TURN;
+  let pc,ok=false,err="";
+  try{
+    pc=new RTCPeerConnection({iceServers:[srv],iceTransportPolicy:"relay"});
+    pc.onicecandidateerror=e=>{err=(e.errorCode||"")+" "+(e.errorText||"")};
+    pc.onicecandidate=e=>{if(e.candidate&&/ typ relay/.test(e.candidate.candidate))ok=true};
+    pc.createDataChannel("t");await pc.setLocalDescription(await pc.createOffer());
+    const t0=Date.now();while(!ok&&Date.now()-t0<10000&&pc.iceGatheringState!=="complete")await new Promise(r=>setTimeout(r,200));
+  }catch(e){err=String(e&&e.message||e)}
+  try{pc&&pc.close()}catch{}
+  if(ok)say("#turnRes","TURN works. Phones on any network can connect.","ok");
+  else say("#turnRes","TURN failed"+(err?" ("+err.trim()+")":"")+". Check the URL, username and password, or your network blocks it.","err");
+  b.disabled=false;
+};
 function turnBtn(sel){const el=typeof sel==="string"?$(sel):sel;if(!el)return;const b=document.createElement("button");b.type="button";b.className="btn";b.style.cssText="display:block;margin-top:10px";b.textContent="Open TURN server settings";b.onclick=()=>openSettings(true);el.appendChild(b)}
 $("#setForm").addEventListener("submit",e=>{
   if(e.submitter&&e.submitter.value==="save"){
